@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "id": "sacrvm-notes",
+  "commands": [
+    {
+      "name": "Serve",
+      "type": "Shell",
+      "icon": "\uD83D\uDE80",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "serve",
+        ".",
+        "-l",
+        "3320"
+      ],
+      "window": "reuse:serve",
+      "longRunning": true
+    },
+    {
+      "name": "Open",
+      "type": "Url",
+      "icon": "\uD83D\uDCDD",
+      "url": "http://localhost:3320/"
+    },
+    {
+      "name": "GitHub",
+      "type": "Url",
+      "icon": "\uD83D\uDC19",
+      "url": "https://github.com/SACRVM/sacrvm-notes"
+    }
+  ]
+}
