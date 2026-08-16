@@ -12,7 +12,7 @@ link to them — the note list is the host's rail, and every note has its own UR
 | Autosave | Debounced 400 ms, plus on blur, on note switch and on leaving the page. No save button to forget. |
 | Addressable | Each note is a route. Rail links, the back button and pasted links all land on the right note. |
 | Delete | Asks first — `sac.dialog` where the kit is loaded, the browser's `confirm()` otherwise. |
-| Storage | `localStorage`, one key: `sacrvm.notes.v1`. Moves to `context.fs` when the shell grows shared storage. |
+| Storage | `context.fs` — one path per note (`notes/<id>`) plus an explicit `order`, so editing rewrites one note and not the collection. The pre-`context.fs` key (`sacrvm.notes.v1`) migrates on first run, and is still the fallback on a host that grants no storage. |
 
 The title is a real field; when it is empty the rail falls back to the note's
 first written line, then to "Untitled".

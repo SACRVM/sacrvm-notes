@@ -17,14 +17,27 @@
 (function () {
     const BASE = sac.app.base();
 
-    // Storage. context.fs is the shell's reserved slot for shared storage and
-    // is still null, so notes live in localStorage under one namespaced key —
-    // when the shell grows an fs, these two functions are all that moves.
-    const STORE_KEY = "sacrvm.notes.v1";
+    /* ----------------------------------------------------------- storage --
+       Notes live in context.fs — storage the host grants, scoped to this app,
+       async so that a host backing it with something other than localStorage
+       changes nothing here. The layout is one path per note plus an explicit
+       order, because the rail's order is the app's decision, not the sort
+       order of a list of ids:
 
-    function loadNotes() {
+           order        ["n1ab", "n1cd", …]      newest first
+           notes/<id>   { id, title, body, created, updated }
+
+       Editing therefore rewrites one note, not the whole collection.
+
+       A host may grant no storage at all (context.fs === null) — then the app
+       falls back to the single localStorage key it used before, which is also
+       what it migrates from on first run. An app checks; it never assumes. */
+
+    const LEGACY_KEY = "sacrvm.notes.v1";
+
+    function readLegacy() {
         try {
-            const parsed = JSON.parse(localStorage.getItem(STORE_KEY) || "[]");
+            const parsed = JSON.parse(localStorage.getItem(LEGACY_KEY) || "[]");
             return Array.isArray(parsed) ? parsed.filter((n) => n && typeof n.id === "string") : [];
         } catch (err) {
             console.warn("[app-notes] stored notes unreadable, starting empty:", err);
@@ -32,11 +45,68 @@
         }
     }
 
-    function saveNotes(notes) {
+    function writeLegacy(notes) {
         try {
-            localStorage.setItem(STORE_KEY, JSON.stringify(notes));
+            localStorage.setItem(LEGACY_KEY, JSON.stringify(notes));
         } catch (err) {
             console.warn("[app-notes] could not store notes:", err);
+        }
+    }
+
+    /** The four writes this app needs, over whichever storage it was given. */
+    function makeStore(fs) {
+        if (!fs) {
+            let cache = [];
+            return {
+                async load() { cache = readLegacy(); return cache.slice(); },
+                async save(note) {
+                    const i = cache.findIndex((n) => n.id === note.id);
+                    if (i === -1) cache.unshift(note); else cache[i] = note;
+                    writeLegacy(cache);
+                },
+                async remove(id) {
+                    cache = cache.filter((n) => n.id !== id);
+                    writeLegacy(cache);
+                },
+                async setOrder(notes) { cache = notes.slice(); writeLegacy(cache); },
+            };
+        }
+
+        return {
+            async load() {
+                await migrate(fs);
+                const order = await fs.read("order", []);
+                const paths = await fs.list("notes/");
+                const ids = paths.map((p) => p.slice("notes/".length));
+                // The order document decides; anything it does not mention (a
+                // half-written earlier session, another tab) is appended rather
+                // than dropped. Storage is the user's data — never lose a note
+                // over bookkeeping.
+                const seen = new Set(order);
+                const all = order.filter((id) => ids.includes(id))
+                                 .concat(ids.filter((id) => !seen.has(id)));
+                const notes = await Promise.all(all.map((id) => fs.read("notes/" + id, null)));
+                return notes.filter((n) => n && typeof n.id === "string");
+            },
+            async save(note) { await fs.write("notes/" + note.id, note); },
+            async remove(id) { await fs.remove("notes/" + id); },
+            async setOrder(notes) { await fs.write("order", notes.map((n) => n.id)); },
+        };
+    }
+
+    /** One-time move of the pre-context.fs notes. Only into empty storage, and
+     *  the old key goes only after every note arrived. */
+    async function migrate(fs) {
+        const legacy = readLegacy();
+        if (!legacy.length) return;
+        if ((await fs.list("notes/")).length) return;   // fs already has notes
+        try {
+            for (const note of legacy) await fs.write("notes/" + note.id, note);
+            await fs.write("order", legacy.map((n) => n.id));
+            localStorage.removeItem(LEGACY_KEY);
+            console.info(`[app-notes] moved ${legacy.length} note(s) into context.fs`);
+        } catch (err) {
+            console.warn("[app-notes] migration failed, keeping the old store:", err);
         }
     }
 
@@ -126,6 +196,8 @@
             this._notes = [];
             this._current = null;
             this._saveTimer = null;
+            this._loaded = false;      // storage is async — nothing to show yet
+            this._wanted = undefined;
 
             const queue = () => this._queueSave();
             const flush = () => this._flush();
@@ -142,13 +214,32 @@
 
         onMount(context) {
             this._ctx = context;
-            this._notes = loadNotes();
+            this._store = makeStore(context.fs);
             // A tab closed mid-sentence must not lose it.
             this._onLeave = () => this._flush();
             window.addEventListener("beforeunload", this._onLeave);
             // Rail clicks, the back button and pasted URLs all arrive here.
             this._offRoute = context.onRoute((route) => this._select(route));
-            this._select(context.route);
+
+            // Reading is async now, so the first paint waits for it — the
+            // route that got us here is honoured once the notes are in.
+            this._store.load().then((notes) => {
+                this._notes = notes;
+                this._loaded = true;
+                // A route that arrived while reading wins over the one we
+                // mounted with — the user asked for it more recently.
+                this._select(this._wanted !== undefined ? this._wanted : context.route);
+                this._wanted = undefined;
+            }).catch((err) => {
+                console.error("[app-notes] could not read the notes:", err);
+                this._notes = [];
+                this._loaded = true;
+                this._select(null);
+                if (typeof sac !== "undefined" && typeof sac.toast === "function") {
+                    sac.toast("Your notes could not be read — nothing was overwritten.",
+                              { kind: "error", duration: 0 });
+                }
+            });
         }
 
         onUnmount() {
@@ -162,6 +253,9 @@
 
         /** Show one note: flush the one being left, then re-address and repaint. */
         _select(id) {
+            // Nothing is readable yet: remember what was asked for instead of
+            // re-addressing to "no note" and losing it.
+            if (!this._loaded) { this._wanted = id; return; }
             this._flush();
             this._current = this._notes.find((n) => n.id === id) || this._notes[0] || null;
             this._render();
@@ -175,9 +269,10 @@
             const now = Date.now();
             // Newest first, and the order never shuffles under the cursor:
             // the rail is stable while you type.
-            this._notes.unshift({ id: newId(), title: "", body: "", created: now, updated: now });
-            saveNotes(this._notes);
-            this._select(this._notes[0].id);
+            const note = { id: newId(), title: "", body: "", created: now, updated: now };
+            this._notes.unshift(note);
+            this._write(this._store.save(note).then(() => this._store.setOrder(this._notes)));
+            this._select(note.id);
             this._title.focus();
         }
 
@@ -189,7 +284,7 @@
                 const index = this._notes.findIndex((n) => n.id === note.id);
                 if (index === -1) return;
                 this._notes.splice(index, 1);
-                saveNotes(this._notes);
+                this._write(this._store.remove(note.id).then(() => this._store.setOrder(this._notes)));
                 this._cancelSave();
                 this._current = null;              // never flush a deleted note back in
                 const next = this._notes[index] || this._notes[index - 1] || null;
@@ -222,11 +317,26 @@
                 note.title = this._title.value;
                 note.body = this._body.value;
                 note.updated = Date.now();
-                saveNotes(this._notes);
+                // One note, one write — editing never rewrites the collection.
+                this._write(this._store.save(note));
                 this._renderMeta();
                 this._projectRail();               // the title is the rail label
             }
             this._setState("Saved");
+        }
+
+        /** Every write goes through here: storage that refuses (no room left,
+         *  a host backend that is offline) must say so instead of pretending
+         *  the note is safe. */
+        _write(promise) {
+            return promise.catch((err) => {
+                console.error("[app-notes] write failed:", err);
+                this._setState("Not saved");
+                if (typeof sac !== "undefined" && typeof sac.toast === "function") {
+                    sac.toast("This note could not be saved — copy it somewhere safe.",
+                              { kind: "error", duration: 0 });
+                }
+            });
         }
 
         /* -------------------------------------------------------- render -- */

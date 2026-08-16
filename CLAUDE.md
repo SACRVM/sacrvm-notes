@@ -15,9 +15,12 @@ F5 — no node_modules, no bundler, no TypeScript.
 
 **The kit is not vendored here**: `index.html` loads it from the appkit's Pages.
 Use only the kit's documented API and its tokens — no raw colours, `--accent`
-seeded on the app element, everything else derived from it. Notes are kept in
-`localStorage` until `context.fs` exists; that swap is the app's one planned
-change. GitHub Pages serves this repo, and a desktop installs the app by
+seeded on the app element, everything else derived from it. Notes live in
+`context.fs` — one path per note plus an explicit `order` — with the old
+`localStorage` key as both the migration source and the fallback for a host
+that grants no storage. Never write to `localStorage` directly again: that
+opts out of every host offering something better. GitHub Pages serves this
+repo, and a desktop installs the app by
 reading `app.json` from that origin: whatever is committed here is what people
 install.
 
