@@ -1,0 +1,52 @@
+# Notes
+
+A notes app built as a [SACRVM APPKIT](https://github.com/SACRVM/sacrvm-appkit) app:
+one custom element, one classic script, no build step. Write notes, keep them,
+link to them — the note list is the host's rail, and every note has its own URL.
+
+## What it does
+
+| | |
+| --- | --- |
+| Notes | Create, edit and delete. Newest first; the order never shuffles while you type. |
+| Autosave | Debounced 400 ms, plus on blur, on note switch and on leaving the page. No save button to forget. |
+| Addressable | Each note is a route. Rail links, the back button and pasted links all land on the right note. |
+| Delete | Asks first — `sac.dialog` where the kit is loaded, the browser's `confirm()` otherwise. |
+| Storage | `localStorage`, one key: `sacrvm.notes.v1`. Moves to `context.fs` when the shell grows shared storage. |
+
+The title is a real field; when it is empty the rail falls back to the note's
+first written line, then to "Untitled".
+
+## Run it
+
+```bash
+npx serve .        # http://localhost:3000
+```
+
+`index.html` is the harness: it loads the kit from the appkit's site, plays
+desktop (ribbon + rail + stage) and mounts the app alone. F5 to develop.
+
+## Install it on a desktop
+
+The app is a `kind: "view"` app — it takes the stage and projects its
+navigation into the shell's rail. Register it with the manifest in `app.json`:
+
+```js
+sac.apps.register({
+    id:    "notes",
+    name:  "Notes",
+    icon:  "note",
+    kind:  "view",
+    tag:   "app-notes",
+    src:   "https://example.com/sacrvm-notes/app.js",   // app.json's "entry"
+});
+sac.apps.init();
+```
+
+The shell then owns the address space: notes live at `#/notes/<id>` there and
+at `#/<id>` standalone. The app builds no hash itself — it asks
+`context.href()` — so the same file works in both places unchanged.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

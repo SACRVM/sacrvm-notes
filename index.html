@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes</title>
+
+    <!-- The harness: the app alone, no desktop, F5 to develop.
+         An app does NOT vendor the kit — its host provides it. Here the host
+         is this page, so it borrows the kit from the appkit's own site. Swap
+         this for a local path if you keep a copy. -->
+    <link rel="stylesheet" href="https://sacrvm.github.io/sacrvm-appkit/kit/css/ui.css">
+    <script defer src="https://sacrvm.github.io/sacrvm-appkit/kit/js/all.js"></script>
+
+    <script defer>
+        // The app is injected AFTER the kit — exactly what a desktop does
+        // before it opens you. (all.js injects its scripts, and injected
+        // scripts do not hold up DOMContentLoaded, so a plain
+        // <script defer src="app.js"> would run too early and find no sac.)
+        function loadApp() {
+            const s = document.createElement("script");
+            s.src = "app.js";
+            document.head.appendChild(s);
+        }
+        if (window.sacReady) loadApp();
+        else document.addEventListener("sac:ready", loadApp, { once: true });
+    </script>
+</head>
+<body class="app-page">
+    <!-- The harness plays desktop: a ribbon, a rail for the app to project
+         into, and a stage. With no host calling mount(), sac.app.Element
+         mounts the app itself — and its rail navigation works here too. -->
+    <sac-nav brand="HARNESS" app-name="NOTES" brand-icon="note"></sac-nav>
+    <div class="workspace">
+        <div class="main-layout">
+            <sac-sidebar></sac-sidebar>
+            <div class="app-stage">
+                <app-notes></app-notes>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
