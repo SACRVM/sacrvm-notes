@@ -1,11 +1,11 @@
 /* Scoped to the app's own element — never :root, or the app would repaint the
    desktop around it. Tokens only: no raw colours anywhere below. */
-/* No per-app --accent seed here on purpose: the kit derives --accent-fill /
-   --accent-tint / --accent-text on :root, so a seed set further down re-tints
-   only what reads var(--accent) directly (focus rings, hover borders) and
-   leaves filled surfaces on the shell's accent — a half-teal app. Notes wears
-   the host's accent until the kit derives those alongside a scoped seed. */
 app-notes {
+    /* One seed is the whole identity: the kit re-derives the accent tokens
+       on every app element (.sac-app), so fills, tints and accent text follow
+       this — on a desktop and standalone alike. */
+    --accent: #14b8a6;
+
     display: flex;
     flex-direction: column;
     height: 100%;
