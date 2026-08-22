@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Dialog App</title>
+
+    <!-- The harness: your app alone, no desktop, F5 to develop.
+         Vendored and autark: your app repo keeps its OWN copy of kit/ (the
+         primary model) — no CDN, works fully offline, and you upgrade when you
+         choose. When a real desktop hosts you instead, IT provides the kit and
+         you drop these two lines. -->
+    <link rel="stylesheet" href="kit/css/ui.css">
+    <script defer src="kit/js/all.js"></script>
+
+    <script defer>
+        // The app is injected AFTER the kit — exactly what a desktop does
+        // before it opens you. (all.js injects its scripts, and injected
+        // scripts do not hold up DOMContentLoaded, so a plain
+        // <script defer src="app.js"> would run too early and find no sac.)
+        function loadApp() {
+            const s = document.createElement("script");
+            s.src = "app.js";
+            document.head.appendChild(s);
+        }
+        if (window.sacReady) loadApp();
+        else document.addEventListener("sac:ready", loadApp, { once: true });
+    </script>
+
+    <style>
+        /* Harness only — not part of the app. */
+        body { padding: 2rem; }
+        .frame {
+            max-width: 420px;
+            min-height: 360px;
+            padding: 1rem;
+            display: flex;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-l);
+        }
+        .frame > * { flex: 1; }
+    </style>
+</head>
+<body>
+    <!-- Roughly the box a <sac-window> would give it on a desktop. With no
+         host calling mount(), sac.app.Element mounts the app itself. -->
+    <div class="frame"><app-my-dialog-app></app-my-dialog-app></div>
+</body>
+</html>

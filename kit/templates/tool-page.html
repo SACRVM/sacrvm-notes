@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Tool</title>
+    <!-- Tool pages usually get their own style.css whose first line is
+         @import '../kit/css/ui.css';  followed by the per-app accent:
+         :root { --accent: #10b981; }
+         Everything accent-derived (buttons, glows, active states, orb)
+         follows automatically. -->
+    <link rel="stylesheet" href="style.css">
+
+    <script defer src="../kit/js/lib/globals.js"></script>
+    <script defer src="../kit/js/lib/icons.js"></script>
+    <script defer src="../kit/js/lib/pan-zoom.js"></script>
+    <script defer src="../kit/js/lib/hotkeys.js"></script>
+    <script defer src="../kit/js/lib/color.js"></script>
+    <script defer src="../kit/js/components/sac-icon.js"></script>
+    <script defer src="../kit/js/components/sac-nav.js"></script>
+    <script defer src="../kit/js/components/sac-window.js"></script>
+    <script defer src="../kit/js/components/sac-split.js"></script>
+    <script defer src="../kit/js/components/sac-drop-zone.js"></script>
+    <script defer src="../kit/js/components/sac-section.js"></script>
+    <script defer src="../kit/js/components/sac-toggle.js"></script>
+    <script defer src="../kit/js/components/sac-slider.js"></script>
+    <script defer src="../kit/js/components/sac-stepper.js"></script>
+    <script defer src="../kit/js/components/sac-segmented-control.js"></script>
+    <!-- color suite: the picker must load before the field, which embeds it. -->
+    <script defer src="../kit/js/components/sac-color-picker.js"></script>
+    <script defer src="../kit/js/components/sac-color-field.js"></script>
+    <script defer src="../kit/js/components/sac-swatch-grid.js"></script>
+    <script defer src="../kit/js/components/sac-log.js"></script>
+    <script defer src="../kit/js/components/sac-hud.js"></script>
+    <script defer src="../kit/js/components/sac-tabs.js"></script>
+    <script defer src="../kit/js/components/sac-menu.js"></script>
+    <script defer src="../kit/js/components/sac-command-palette.js"></script>
+    <script defer src="../kit/js/components/sac-tooltip.js"></script>
+    <script defer src="../kit/js/components/sac-toast.js"></script>
+    <script defer src="../kit/js/components/sac-progress.js"></script>
+    <script defer src="../kit/js/components/sac-spinner.js"></script>
+    <script defer src="../kit/js/components/sac-avatar.js"></script>
+    <script defer src="../kit/js/components/sac-copy-button.js"></script>
+    <script defer src="../kit/js/components/sac-theme-toggle.js"></script>
+</head>
+<body class="app-page">
+    <sac-nav brand="MY TOOLS" app-name="MY TOOL" brand-href="/">
+        <!-- Per-page actions in the ribbon: the .toolbar recipe sizes
+             .btn to the 32px ribbon height — no inline styles. -->
+        <div slot="toolbar" class="toolbar">
+            <button class="btn primary" id="btn-open">Open File</button>
+            <button class="btn" id="btn-export">Export</button>
+        </div>
+    </sac-nav>
+
+    <div class="workspace">
+        <div class="main-layout">   <!-- has padding-top:50px for the nav -->
+
+            <div class="sidebar">
+                <sac-section title="Settings">
+                    <sac-slider label="Amount" min="0" max="100" value="50" suffix="%"></sac-slider>
+                    <sac-toggle label="Enabled" checked></sac-toggle>
+                </sac-section>
+                <sac-section title="Mode">
+                    <sac-segmented-control value="a">
+                        <button data-value="a">A</button>
+                        <button data-value="b">B</button>
+                    </sac-segmented-control>
+                </sac-section>
+                <sac-section title="Log">
+                    <sac-log id="log" style="height: 140px;"></sac-log>
+                </sac-section>
+            </div>
+
+            <div class="viewport" id="viewport">
+                <!-- For pan/zoom, put drawable content in a .pz-layer and wire:
+                     sac.setupPanZoom({ panes: [{ pane: viewportEl, layer: layerEl }] })
+                -->
+                <div class="pz-layer" id="layer">
+                    <canvas id="canvas"></canvas>
+                </div>
+                <sac-hud position="top-right" id="hud"></sac-hud>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Floating window, e.g. for markdown help via the help-loader module. -->
+    <sac-window id="help-window" title="Help" width="500px" height="600px" left="calc(100vw - 540px)" top="90px">
+        <div id="help-content"></div>
+    </sac-window>
+
+    <!-- Ctrl-K palette: one tag, no config. On a tool page it surfaces the
+         router's routes plus anything registered on sac.commands. -->
+    <sac-command-palette></sac-command-palette>
+
+    <script defer src="script.js"></script>
+</body>
+</html>

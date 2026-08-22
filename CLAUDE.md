@@ -10,12 +10,17 @@ never offers the app a hull to project into. Read `README.md` first.
 
 **One repo, one app.** The repo IS the app: `app.json` (the manifest a desktop
 reads), `app.js` (one custom element, one classic script, guarded define),
-`app.css`, and `index.html` as a standalone harness. Nothing else ships.
+`app.css`, `index.html` as a standalone harness, and `kit/` — the vendored
+kit. Nothing else ships.
 
 **No build step, ever.** Vanilla custom elements, plain CSS, `npx serve .` and
 F5 — no node_modules, no bundler, no TypeScript.
 
-**The kit is not vendored here**: `index.html` loads it from the appkit's Pages.
+**The kit is vendored** (autark, decided 2026-08-22): `kit/` is the release
+copy, dropped in verbatim — `kit/VERSION` says which — and never edited here;
+upgrading is "delete `kit/`, unzip the new release". `index.html` links the
+local `kit/css/ui.css` and `kit/js/all.js`, never a CDN. See the appkit's
+`CONSUMING.md`.
 Use only the kit's documented API and its tokens — no raw colours, `--accent`
 seeded on the app element, everything else derived from it. Notes live in
 `context.fs` — one path per note plus an explicit `order` — with the old

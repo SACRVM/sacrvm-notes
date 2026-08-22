@@ -23,9 +23,9 @@ first written line, then to "Untitled".
 npx serve .        # http://localhost:3000
 ```
 
-`index.html` is the harness: it loads the kit from the appkit's site and
-provides nothing else — the app is complete and draws its own chrome (nav +
-rail). F5 to develop.
+`index.html` is the harness: it loads the vendored kit (`kit/`, the release
+copy — `kit/VERSION` says which) and provides nothing else — the app is
+complete and draws its own chrome (nav + rail). F5 to develop.
 
 ## Install it on a desktop
 

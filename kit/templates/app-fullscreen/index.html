@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Notes</title>
+    <title>My Fullscreen App</title>
 
-    <!-- The harness: the app alone, no desktop, F5 to develop.
-         The kit is vendored — kit/ is the release copy, verbatim, never
-         edited here (kit/VERSION says which). Local, offline, no CDN. -->
+    <!-- The harness: your app alone, no desktop, F5 to develop.
+         Vendored and autark: your app repo keeps its OWN copy of kit/ (the
+         primary model) — no CDN, works fully offline, and you upgrade when you
+         choose. When a real desktop hosts you instead, IT provides the kit and
+         you drop these two lines. -->
     <link rel="stylesheet" href="kit/css/ui.css">
     <script defer src="kit/js/all.js"></script>
 
@@ -26,10 +28,10 @@
     </script>
 </head>
 <body class="app-page">
-    <!-- No fake desktop frame: the app is COMPLETE and draws its own chrome
-         (nav + rail). This page provides nothing but the kit and the element —
-         F5 to develop. With no host calling mount(), sac.app.Element mounts
-         the app itself; context.host is null, so its nav shows no jump. -->
-    <app-notes></app-notes>
+    <!-- No fake desktop frame: the app is COMPLETE and draws its own chrome.
+         This page provides nothing but the kit and the element — F5 to
+         develop. With no host calling mount(), sac.app.Element mounts the
+         app itself; context.host is null, so its nav shows no jump. -->
+    <app-my-fullscreen-app></app-my-fullscreen-app>
 </body>
 </html>
