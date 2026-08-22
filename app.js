@@ -1,10 +1,13 @@
 /**
  * <app-notes> — notes as a SACRVM APPKIT app (manifest kind: "view").
  *
- * A fullscreen app: it takes the whole stage and draws no navigation of its
- * own. The note LIST is the navigation, so it is projected into the host's
- * rail (context.sidebar) — same chrome as every other app on the desktop, and
- * the harness page's own <sac-sidebar> when it runs standalone.
+ * A fullscreen app, COMPLETE: it draws its whole chrome — its own <sac-nav>
+ * and its own <sac-sidebar> rail. The note LIST is the navigation, and the
+ * rail that shows it belongs to the app. A host injects its presence through
+ * context.host — the full package { name, icon, href, nav, toolbar } — and
+ * the app hands it to its own nav, which renders the "⌂ HOST ·" jump, the
+ * suite's nav group in the burger panel and the host's toolbar controls;
+ * standalone context.host is null and nothing is injected.
  *
  * Every note is an address. The rail links are built with context.href(), the
  * selection is published with context.deepLink.set(), and context.onRoute()
@@ -158,34 +161,43 @@
             sac.app.styles(BASE + "app.css", "app-notes-css");
 
             // Static markup only — every note string goes in through .value or
-            // textContent, never innerHTML.
+            // textContent, never innerHTML. The nav and the rail are the
+            // app's OWN chrome; a host adds nothing but context.host.
             this.innerHTML = `
-<div class="notes">
-    <section class="editor" hidden>
-        <header class="ed-head">
-            <input class="ed-title" type="text" placeholder="Untitled"
-                   aria-label="Note title" maxlength="200" autocomplete="off">
-            <div class="toolbar">
-                <span class="ed-state" role="status" aria-live="polite"></span>
-                <button type="button" class="btn ed-delete">
-                    <sac-icon name="trash"></sac-icon>Delete
-                </button>
-            </div>
-        </header>
-        <textarea class="ed-body" aria-label="Note body" placeholder="Start writing…"></textarea>
-        <footer class="ed-meta"></footer>
-    </section>
+<sac-nav brand="NOTES" brand-icon="note">
+    <div slot="context"><sac-theme-toggle></sac-theme-toggle></div>
+</sac-nav>
+<div class="main-layout">
+    <sac-sidebar></sac-sidebar>
+    <div class="notes">
+        <section class="editor" hidden>
+            <header class="ed-head">
+                <input class="ed-title" type="text" placeholder="Untitled"
+                       aria-label="Note title" maxlength="200" autocomplete="off">
+                <div class="toolbar">
+                    <span class="ed-state" role="status" aria-live="polite"></span>
+                    <button type="button" class="btn ed-delete">
+                        <sac-icon name="trash"></sac-icon>Delete
+                    </button>
+                </div>
+            </header>
+            <textarea class="ed-body" aria-label="Note body" placeholder="Start writing…"></textarea>
+            <footer class="ed-meta"></footer>
+        </section>
 
-    <div class="empty-state ed-nothing" hidden>
-        <sac-icon name="note"></sac-icon>
-        <h3>No notes yet</h3>
-        <p>Notes are kept in this browser, and every one of them gets a link you can paste.</p>
-        <button type="button" class="btn primary ed-first">
-            <sac-icon name="plus"></sac-icon>New note
-        </button>
+        <div class="empty-state ed-nothing" hidden>
+            <sac-icon name="note"></sac-icon>
+            <h3>No notes yet</h3>
+            <p>Notes are kept in this browser, and every one of them gets a link you can paste.</p>
+            <button type="button" class="btn primary ed-first">
+                <sac-icon name="plus"></sac-icon>New note
+            </button>
+        </div>
     </div>
 </div>`;
 
+            this._nav     = this.querySelector("sac-nav");
+            this._rail    = this.querySelector("sac-sidebar");
             this._editor  = this.querySelector(".editor");
             this._nothing = this.querySelector(".ed-nothing");
             this._title   = this.querySelector(".ed-title");
@@ -198,6 +210,7 @@
             this._saveTimer = null;
             this._loaded = false;      // storage is async — nothing to show yet
             this._wanted = undefined;
+            this._offCommands = null;  // set while the palette can reach us
 
             const queue = () => this._queueSave();
             const flush = () => this._flush();
@@ -214,12 +227,25 @@
 
         onMount(context) {
             this._ctx = context;
+            // The brand links to the app's own root; the host's injected
+            // presence — the ⌂ jump, the suite's nav group, host toolbar
+            // controls — is the ONE thing a desktop adds to this chrome.
+            // Data in, the app's own nav renders it; null standalone.
+            this._nav.setAttribute("brand-href", context.href(""));
+            this._nav.host = context.host;
             this._store = makeStore(context.fs);
             // A tab closed mid-sentence must not lose it.
             this._onLeave = () => this._flush();
             window.addEventListener("beforeunload", this._onLeave);
             // Rail clicks, the back button and pasted URLs all arrive here.
             this._offRoute = context.onRoute((route) => this._select(route));
+
+            // The app owns its toolbar, so the palette does not see its
+            // buttons by itself: anything keyboard-worthy registers on
+            // sac.commands — and only while the app is actually on stage,
+            // or another app's palette would still run ours.
+            this._viz = new IntersectionObserver(([entry]) => this._setCommands(entry.isIntersecting));
+            this._viz.observe(this);
 
             // Reading is async now, so the first paint waits for it — the
             // route that got us here is honoured once the notes are in.
@@ -246,7 +272,33 @@
             this._flush();
             if (this._offRoute) { this._offRoute(); this._offRoute = null; }
             if (this._onLeave) { window.removeEventListener("beforeunload", this._onLeave); this._onLeave = null; }
-            if (this._ctx) this._ctx.sidebar.clear();
+            if (this._viz) { this._viz.disconnect(); this._viz = null; }
+            this._setCommands(false);
+        }
+
+        /** On stage / off stage: the palette commands follow the app. */
+        _setCommands(visible) {
+            if (visible) {
+                if (this._offCommands || typeof sac === "undefined" || !sac.commands) return;
+                const offs = [
+                    sac.commands.register({
+                        id:    "notes-new-note",
+                        label: "New note",
+                        icon:  "plus",
+                        run:   () => this._create(),
+                    }),
+                    sac.commands.register({
+                        id:    "notes-delete-note",
+                        label: "Delete note",
+                        icon:  "trash",
+                        run:   () => { if (this._current) this._delete(); },
+                    }),
+                ];
+                this._offCommands = () => offs.forEach((off) => off());
+            } else if (this._offCommands) {
+                this._offCommands();
+                this._offCommands = null;
+            }
         }
 
         /* --------------------------------------------------------- notes -- */
@@ -259,7 +311,7 @@
             this._flush();
             this._current = this._notes.find((n) => n.id === id) || this._notes[0] || null;
             this._render();
-            this._projectRail();
+            this._renderRail();
             // replaceState — moving between notes is not a new page each time.
             this._ctx.deepLink.set(this._current ? this._current.id : null);
         }
@@ -320,7 +372,7 @@
                 // One note, one write — editing never rewrites the collection.
                 this._write(this._store.save(note));
                 this._renderMeta();
-                this._projectRail();               // the title is the rail label
+                this._renderRail();                // the title is the rail label
             }
             this._setState("Saved");
         }
@@ -361,11 +413,12 @@
             this._state.textContent = text;
         }
 
-        /** The rail IS the note list — heading, "New note", then the notes. */
-        _projectRail() {
+        /** The rail IS the note list — heading, "New note", then the notes.
+         *  It is the app's own <sac-sidebar>; nothing is projected anywhere. */
+        _renderRail() {
             if (!this._ctx) return;
             const current = this._current;
-            this._ctx.sidebar.set([
+            this._rail.items = [
                 { section: "Notes" },
                 { label: "New note", icon: "plus", onClick: () => this._create() },
                 ...this._notes.map((note) => ({
@@ -376,7 +429,7 @@
                     href:   this._ctx.href(note.id),
                     active: current != null && note.id === current.id,
                 })),
-            ]);
+            ];
         }
     }
 

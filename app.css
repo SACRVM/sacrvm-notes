@@ -3,17 +3,24 @@
 app-notes {
     /* One seed is the whole identity: the kit re-derives the accent tokens
        on every app element (.sac-app), so fills, tints and accent text follow
-       this — on a desktop and standalone alike. */
+       this — the app's own nav and rail included, on a desktop and standalone
+       alike. */
     --accent: #14b8a6;
 
-    display: flex;
-    flex-direction: column;
+    display: block;
     height: 100%;
-    min-height: 0;
 }
 
+/* Standalone the element sits directly in <body class="app-page"> (a flex
+   column) — same size either way. */
+body.app-page > app-notes { flex: 1; min-height: 0; }
+app-notes .main-layout { height: 100%; }
+
+/* The rail's sibling inside .main-layout: the editor column. It does not
+   scroll — the textarea does. */
 app-notes .notes {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     min-height: 0;

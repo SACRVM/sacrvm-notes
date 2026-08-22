@@ -2,7 +2,7 @@
 
 A notes app built as a [SACRVM APPKIT](https://github.com/SACRVM/sacrvm-appkit) app:
 one custom element, one classic script, no build step. Write notes, keep them,
-link to them — the note list is the host's rail, and every note has its own URL.
+link to them — the note list is the app's own rail, and every note has its own URL.
 
 ## What it does
 
@@ -23,13 +23,16 @@ first written line, then to "Untitled".
 npx serve .        # http://localhost:3000
 ```
 
-`index.html` is the harness: it loads the kit from the appkit's site, plays
-desktop (ribbon + rail + stage) and mounts the app alone. F5 to develop.
+`index.html` is the harness: it loads the kit from the appkit's site and
+provides nothing else — the app is complete and draws its own chrome (nav +
+rail). F5 to develop.
 
 ## Install it on a desktop
 
-The app is a `kind: "view"` app — it takes the stage and projects its
-navigation into the shell's rail. Register it with the manifest in `app.json`:
+The app is a `kind: "view"` app — it takes the stage and draws its whole
+chrome; the desktop injects its presence through `context.host` (the ⌂
+jump-home, the suite's nav group, host toolbar controls), and the app's own
+nav renders it. Register it with the manifest in `app.json`:
 
 ```js
 sac.apps.register({

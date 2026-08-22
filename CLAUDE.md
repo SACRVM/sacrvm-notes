@@ -2,9 +2,11 @@
 
 A notes app, and one of the two example apps for
 [SACRVM APPKIT](https://github.com/SACRVM/sacrvm-appkit). Where the calculator
-shows a `window` app, this one shows a `view`: it takes the whole stage,
-projects its note list into the shell's rail via `context.sidebar`, and gives
-every note its own route. Read `README.md` first.
+shows a `window` app, this one shows a `view`: a COMPLETE app that draws its
+whole chrome — its own `<sac-nav>` and its own `<sac-sidebar>` rail holding
+the note list — and gives every note its own route. A desktop injects its
+presence through `context.host`, which the app renders in its own nav; it
+never offers the app a hull to project into. Read `README.md` first.
 
 **One repo, one app.** The repo IS the app: `app.json` (the manifest a desktop
 reads), `app.js` (one custom element, one classic script, guarded define),

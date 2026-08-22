@@ -27,17 +27,10 @@
     </script>
 </head>
 <body class="app-page">
-    <!-- The harness plays desktop: a ribbon, a rail for the app to project
-         into, and a stage. With no host calling mount(), sac.app.Element
-         mounts the app itself — and its rail navigation works here too. -->
-    <sac-nav brand="HARNESS" app-name="NOTES" brand-icon="note"></sac-nav>
-    <div class="workspace">
-        <div class="main-layout">
-            <sac-sidebar></sac-sidebar>
-            <div class="app-stage">
-                <app-notes></app-notes>
-            </div>
-        </div>
-    </div>
+    <!-- No fake desktop frame: the app is COMPLETE and draws its own chrome
+         (nav + rail). This page provides nothing but the kit and the element —
+         F5 to develop. With no host calling mount(), sac.app.Element mounts
+         the app itself; context.host is null, so its nav shows no jump. -->
+    <app-notes></app-notes>
 </body>
 </html>
