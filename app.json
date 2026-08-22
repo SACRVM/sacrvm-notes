@@ -2,9 +2,10 @@
     "id": "notes",
     "name": "Notes",
     "icon": "note",
+    "accent": "#14b8a6",
     "description": "Write and keep notes — the list is the rail, every note has its own link.",
     "kind": "view",
     "tag": "app-notes",
     "entry": "app.js",
-    "version": "1.1.0"
+    "version": "1.1.1"
 }
