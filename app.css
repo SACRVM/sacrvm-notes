@@ -1,12 +1,10 @@
 /* Scoped to the app's own element — never :root, or the app would repaint the
-   desktop around it. Tokens only: no raw colours anywhere below. */
-app-notes {
-    /* One seed is the whole identity: the kit re-derives the accent tokens
-       on every app element (.sac-app), so fills, tints and accent text follow
-       this — the app's own nav and rail included, on a desktop and standalone
-       alike. */
-    --accent: #14b8a6;
+   desktop around it. Tokens only: no raw colours anywhere below.
 
+   No --accent here either: the identity lives in app.json, and the HOST
+   seeds it onto the app element (a rule here would overrule the desktop
+   owner's recolor). Standalone, index.html seeds the same color. */
+app-notes {
     display: block;
     height: 100%;
 }
