@@ -2,6 +2,8 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.stackdump
+*.serve.log
+.serve.log
 
 # Firepit + Claude Code — shared config versioned, runtime/personal local
 .firepit/inbox/
