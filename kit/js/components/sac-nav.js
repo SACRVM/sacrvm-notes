@@ -34,7 +34,11 @@
  *                                                own segment goes accent)
  *                   nav:     [{label, href, icon?}],       → a labeled host
  *                            group at the top of the burger panel (the
- *                            suite's cross-app navigation)
+ *                            suite's cross-app navigation). An href of
+ *                            `?app=<id>` for a registered app opens that
+ *                            window IN PLACE on a plain click (sac.apps.open);
+ *                            a modified/middle click keeps the deep link (new
+ *                            tab). Lets a host list window apps, not just routes.
  *                   toolbar: [{icon | avatar:{name, src?},
  *                              label?, title?, href? | onClick?}] }
  *                            → host controls at the right end of the ribbon
@@ -526,7 +530,24 @@ class SacNav extends HTMLElement {
         // Clicking a panel nav-item closes the panel — and so do the ribbon's
         // brand/host links: they navigate too, just from outside the panel.
         this.shadowRoot.querySelectorAll(".nav-item, .brand").forEach(el => {
-            el.addEventListener("click", () => setOpen(false));
+            el.addEventListener("click", (e) => {
+                // A host.nav entry can point at a window app via ?app=<id>.
+                // Open it IN PLACE — the anchor's full navigation would reload,
+                // land home and throw you out of the app you were in. Plain left
+                // click only: a modified/middle click keeps the anchor's deep-link
+                // semantics (a new tab with the window open), and an unknown id or
+                // a host with no sac.apps simply falls back to that too. Mirrors
+                // the launcher tile's [data-app] contract.
+                const m = /[?&]app=([^&]+)/.exec(el.getAttribute("href") || "");
+                const id = m && decodeURIComponent(m[1]);
+                if (id && !e.defaultPrevented && e.button === 0 &&
+                    !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey &&
+                    window.sac?.apps?.get?.(id)) {
+                    e.preventDefault();
+                    Promise.resolve(sac.apps.open(id)).catch(() => {});
+                }
+                setOpen(false);
+            });
         });
 
         // Restore panel state after a re-render (routes changed while open).
