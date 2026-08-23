@@ -639,6 +639,19 @@ a.nav-icon-btn { text-decoration: none; }
     color: var(--text-muted);
 }
 
+/* About window content — rendered by sac.about.open() into a <sac-window>.
+   The one shared credits/licence surface: a host and an app both use it, so
+   the two look related by construction. Reuses .sac-caption for the version
+   line and each notice's title. */
+.sac-about { display: flex; flex-direction: column; gap: 1rem; }
+.sac-about-head { display: flex; align-items: center; gap: 0.75rem; }
+.sac-about-head sac-icon { --icon-size: 30px; color: var(--accent); }
+.sac-about-head h2 { margin: 0; font-size: 1.05rem; line-height: 1.2; }
+.sac-about-head .sac-caption { margin: 0.15rem 0 0; }
+.sac-about-desc { margin: 0; color: var(--text-muted); }
+.sac-about-notice { display: flex; flex-direction: column; gap: 0.3rem; }
+.sac-about-notice p { margin: 0; color: var(--text-muted); font-size: 0.85rem; }
+
 .card {
     background: var(--panel);
     padding: 1.25rem;

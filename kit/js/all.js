@@ -36,6 +36,7 @@
         "lib/router.js",
         "lib/scope.js",
         "lib/dialog.js",
+        "lib/about.js",   // sac.about — the shared About window (a peer of sac.dialog)
         "lib/pan-zoom.js",
         "lib/apps.js",
         "lib/hotkeys.js",

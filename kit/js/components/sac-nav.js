@@ -210,7 +210,7 @@ class SacNav extends HTMLElement {
         // nothing (the same rule sac-footer's link follows). Recomputed every
         // render, so a late route (sac:route-registered) or a re-declared host
         // (sac:host-changed) brings the burger back the moment there is content.
-        const hasPanel = hostNav.length > 0 || routes.length > 0 || sections.length > 0;
+        const hasPanel = !!hostHref || hostNav.length > 0 || routes.length > 0 || sections.length > 0;
 
         // Kit strings: attribute position gets quote-escaping, the empty
         // state is a text node and gets &/< escaping instead.
@@ -386,6 +386,12 @@ class SacNav extends HTMLElement {
                     gap: 0.25rem;
                     align-items: center;
                     margin-left: 0.5rem;
+                    /* Hairline scope divider: the host's controls read as a
+                       distinct group from the app's own toolbar to their left,
+                       so two lookalike buttons (an app About + a host About)
+                       never read as one row. 1px neutral, never a thick colour. */
+                    padding-left: 0.6rem;
+                    border-left: 1px solid var(--border);
                 }
 
                 /* Scrollbar theme — duplicated because the global rule in
@@ -427,9 +433,20 @@ class SacNav extends HTMLElement {
             </nav>
             <div class="backdrop"></div>
             <aside class="panel">
-                ${hostNav.length ? `
+                ${(hostHref || hostNav.length) ? `
                 <div class="panel-label">${escText(hostLabel || t("nav.host", "Host"))}</div>
                 <ul class="nav-list">
+                    ${hostHref ? `
+                    <li>
+                        <!-- The way back to the host lives in the burger too, not
+                             only in the ribbon ⌂ — the menu is the place you look
+                             to navigate, so the suite's home belongs at the top of
+                             its own group. Same data the ribbon jump already has. -->
+                        <a class="nav-item ${isActiveHref(hostHref) ? "active" : ""}" href="${esc(hostHref)}">
+                            <sac-icon name="${esc(hostIcon)}"></sac-icon>
+                            <span>${escText(t("nav.home", "Home"))}</span>
+                        </a>
+                    </li>` : ``}
                     ${hostNav.map(e => {
                         // The entry addressing the running app carries the
                         // app's own sections as an indented subtree.
@@ -457,7 +474,7 @@ class SacNav extends HTMLElement {
                 ${routes.length ? `<hr class="panel-sep">${(appName || brand)
                     ? `<div class="panel-label">${escText(appName || brand)}</div>` : ``}` : ``}` : ``}
                 ${routes.length === 0
-                    ? ((hostNav.length || sections.length) ? `` : `<div class="panel-empty">${L.noSections}</div>`)
+                    ? ((hostHref || hostNav.length || sections.length) ? `` : `<div class="panel-empty">${L.noSections}</div>`)
                     : `<ul class="nav-list">
                          ${routes.map(r => `
                              <li>

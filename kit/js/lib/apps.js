@@ -15,6 +15,10 @@
  *       name:        "Color Bucket",          // display name
  *       icon:        "palette",               // sac-icon name
  *       description: "Mix and manage colors", // tile subline (optional)
+ *       version:     "1.0.0",                 // optional — shown in About + on install
+ *       notices:     [{ title, text }],       // optional — third-party credits, licence
+ *                                             // and trademark text; sac.about renders
+ *                                             // each as a titled section (+ name/icon/version)
  *       badge:       "NEW",                   // optional — short string, rendered by
  *                                             // <sac-launcher> as the tile's corner pill
  *       tile:        "wide",                  // optional tile footprint in the launcher
@@ -133,6 +137,9 @@
  *
  *   context = {
  *       appId: "color-bucket",
+ *       manifest: {…},             // the app's own manifest, copied (name/icon/
+ *                                  // description/version/notices) — pass it straight
+ *                                  // to sac.about.open() for the standard About
  *       params: URLSearchParams,   // deep-link params snapshot at open (empty if none)
  *       route: "components",       // views only: the sub-route after the app id
  *                                  // in "#/<id>/<route>" ("" when there is none)
@@ -314,6 +321,10 @@
         const id = manifest.id;
         const ctx = {
             appId: id,
+            // The app's own manifest, copied — name/icon/description/version and
+            // the optional `notices`, so sac.about.open(context.manifest) needs no
+            // duplication. Read-only: mutating the copy never touches the registry.
+            manifest: Object.assign({}, manifest),
             params: params == null ? new URLSearchParams() : new URLSearchParams(params),
             theme,
             // Scoped storage, when the kit's fs lib is loaded. A host that
