@@ -206,11 +206,18 @@
         }
 
         /** ‹ › click: two thirds of the viewport per step — enough to move,
-            small enough to keep context. */
+            small enough to keep context. A discrete click gets a per-call SMOOTH
+            scroll (scrollBy with an explicit behavior): unlike the CSS
+            scroll-behavior the strip deliberately omits, a per-call behavior is
+            not the programmatic-scroll case Chromium drops, and it never reaches
+            _scrollActiveTab()/_onWheel(), which keep writing scrollLeft and stay
+            instant. prefers-reduced-motion falls back to an instant jump. */
         _onPanClick(e) {
             const strip = this.shadowRoot.querySelector(".strip");
             const dir = Number(e.currentTarget.dataset.dir);
-            strip.scrollLeft += dir * Math.max(strip.clientWidth * 0.66, 60);
+            const by = dir * Math.max(strip.clientWidth * 0.66, 60);
+            const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+            strip.scrollBy({ left: by, behavior: reduce ? "auto" : "smooth" });
         }
 
         /** Show the pan buttons only while there is somewhere to pan, and
@@ -304,7 +311,11 @@
                        scroll-behavior:smooth — Chromium silently drops smooth
                        programmatic scrolls on this strip, so the pan-into-view
                        would randomly not happen; instant is what the browser's
-                       own focus-scrolling does anyway.
+                       own focus-scrolling does anyway. The ‹ › buttons opt into
+                       smooth per call instead (scrollBy with an explicit
+                       behavior, in _onPanClick) — that composes and is not
+                       dropped, so a deliberate click glides while the
+                       programmatic pan stays instant.
                        The 1px bottom padding: the tabs' underline hangs 1px
                        below the row, which would otherwise count as vertical
                        overflow inside a scroll container and be clipped. */

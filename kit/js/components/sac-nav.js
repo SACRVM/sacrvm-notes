@@ -35,12 +35,17 @@
  *                   nav:     [{label, href, icon?}],       → a labeled host
  *                            group at the top of the burger panel (the
  *                            suite's cross-app navigation)
- *                   toolbar: [{icon, label?, title?, href? | onClick?}] }
+ *                   toolbar: [{icon | avatar:{name, src?},
+ *                              label?, title?, href? | onClick?}] }
  *                            → host controls at the right end of the ribbon
  *                            (a signed-in user, a suite-wide action, …).
- *                            Rendered as light-DOM .nav-icon-btn elements —
- *                            the same ui.css recipe as the app's own ribbon
- *                            buttons, so the two always look alike.
+ *                            An entry wears EITHER an `icon` (sac.icons name)
+ *                            or an `avatar` ({name, src?} → a <sac-avatar>, so
+ *                            a signed-in user looks like one); `label` may
+ *                            accompany either. Rendered as light-DOM
+ *                            .nav-icon-btn elements — the same ui.css recipe
+ *                            as the app's own ribbon buttons, so the two
+ *                            always look alike.
  *          Everything is rendered by the APP'S OWN nav — the host supplies
  *          data, it never paints. null/absent = standalone, nothing renders.
  *
@@ -86,7 +91,10 @@ class SacNav extends HTMLElement {
         this._sections = [];
     }
 
-    /** The host's injection (see header). Assign context.host in mount(). */
+    /** The host's injection (see header). Assign context.host in mount().
+     *  A host may re-declare later (e.g. the signed-in user was renamed):
+     *  sac.apps mutates this same object in place and fires sac:host-changed,
+     *  which repaints the injected chrome without a fresh assignment here. */
     get host() { return this._host; }
     set host(v) {
         this._host = v || null;
@@ -105,13 +113,21 @@ class SacNav extends HTMLElement {
         const tools = (this._host && Array.isArray(this._host.toolbar)) ? this._host.toolbar : [];
         tools.forEach((tb) => {
             const el = document.createElement(tb.href ? "a" : "button");
-            el.className = "nav-icon-btn" + (tb.label ? " labeled" : "");
+            el.className = "nav-icon-btn" + (tb.label ? " labeled" : "") +
+                          (tb.avatar ? " avatar" : "");
             el.slot = "host-tools";
             el.dataset.sacHostTool = "";
             el.title = tb.title || tb.label || "";
             if (tb.href) el.href = tb.href;
             else el.type = "button";
-            if (tb.icon) {
+            // An identity avatar wins over an icon glyph — a signed-in user
+            // wears their own badge; everything else is an icon, as before.
+            if (tb.avatar && tb.avatar.name != null) {
+                const av = document.createElement("sac-avatar");
+                av.setAttribute("name", tb.avatar.name);
+                if (tb.avatar.src) av.setAttribute("src", tb.avatar.src);
+                el.appendChild(av);
+            } else if (tb.icon) {
                 const ic = document.createElement("sac-icon");
                 ic.setAttribute("name", tb.icon);
                 el.appendChild(ic);
@@ -150,6 +166,7 @@ class SacNav extends HTMLElement {
         if (this._hashHandler)  window.removeEventListener("hashchange", this._hashHandler);
         if (this._routeHandler) window.removeEventListener("sac:route-registered", this._routeHandler);
         if (this._scopeHandler) window.removeEventListener("sac:scope-changed", this._scopeHandler);
+        if (this._hostChangedHandler) document.removeEventListener("sac:host-changed", this._hostChangedHandler);
     }
 
     render() {
@@ -185,6 +202,15 @@ class SacNav extends HTMLElement {
             ? (h === currentResource || currentResource.startsWith(h + "/"))
             : window.location.pathname === h);
         const isActive = (r) => isActiveHref(r.hash);
+
+        // The burger only earns its place when the panel it opens has something
+        // in it — the host suite nav, the app's own routes, or its sections.
+        // Empty on all three (a standalone app with no routes and no host) means
+        // no panel, so no button: the kit never renders a control that does
+        // nothing (the same rule sac-footer's link follows). Recomputed every
+        // render, so a late route (sac:route-registered) or a re-declared host
+        // (sac:host-changed) brings the burger back the moment there is content.
+        const hasPanel = hostNav.length > 0 || routes.length > 0 || sections.length > 0;
 
         // Kit strings: attribute position gets quote-escaping, the empty
         // state is a text node and gets &/< escaping instead.
@@ -378,9 +404,10 @@ class SacNav extends HTMLElement {
                 }
             </style>
             <nav class="ribbon">
+                ${hasPanel ? `
                 <button class="menu-btn" aria-label="${L.menu}" aria-expanded="false">
                     <span></span><span></span><span></span>
-                </button>
+                </button>` : ``}
                 ${hostHref ? `
                 <a class="brand host-jump" href="${hostHref.replace(/"/g, "&quot;")}"
                    title="${(hostLabel || "Home").replace(/"/g, "&quot;")}">
@@ -468,12 +495,15 @@ class SacNav extends HTMLElement {
             this.isOpen = open;
             backdrop.classList.toggle("open", open);
             panel.classList.toggle("open", open);
-            menuBtn.classList.toggle("active", open);
-            menuBtn.setAttribute("aria-expanded", String(open));
+            if (menuBtn) {
+                menuBtn.classList.toggle("active", open);
+                menuBtn.setAttribute("aria-expanded", String(open));
+            }
         };
         this._setOpen = setOpen;
 
-        menuBtn.addEventListener("click",  () => setOpen(!this.isOpen));
+        // No burger when the panel is empty (see hasPanel in render): guard it.
+        if (menuBtn) menuBtn.addEventListener("click", () => setOpen(!this.isOpen));
         backdrop.addEventListener("click", () => setOpen(false));
 
         // Clicking a panel nav-item closes the panel — and so do the ribbon's
@@ -483,7 +513,9 @@ class SacNav extends HTMLElement {
         });
 
         // Restore panel state after a re-render (routes changed while open).
-        if (this.isOpen) setOpen(true);
+        // With no burger there is no panel to reopen.
+        if (menuBtn) { if (this.isOpen) setOpen(true); }
+        else this.isOpen = false;
     }
 
     attachPersistentHandlers() {
@@ -515,6 +547,17 @@ class SacNav extends HTMLElement {
         // Scope switch: hrefs pick up the new prefix, active-state moves.
         this._scopeHandler = () => this.render();
         window.addEventListener("sac:scope-changed", this._scopeHandler);
+
+        // The host re-declared its package after mount (e.g. the signed-in user
+        // was renamed). sac.apps mutated context.host — the very object held as
+        // this._host — in place and fired this event, so re-reading it repaints
+        // the ⌂ jump, the suite nav and the host toolbar. No app cooperation:
+        // the app handed its nav the host by reference and never touches it again.
+        this._hostChangedHandler = () => {
+            this._syncHostTools();
+            if (this.shadowRoot.firstChild) this.render();
+        };
+        document.addEventListener("sac:host-changed", this._hostChangedHandler);
     }
 }
 

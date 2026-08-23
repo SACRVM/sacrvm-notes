@@ -122,6 +122,15 @@
     --radius-s: 2px;   /* mini elements: strips, tracks, tiny thumbs, inner wells */
     --radius-m: 4px;   /* controls: buttons, inputs, chips, menu items, tabs */
     --radius-l: 6px;   /* surfaces: panels, cards, tiles, windows, dialogs, popovers, toasts */
+
+    /* Caption / eyebrow type — the ONE shared shape for uppercase section
+       titles (sac-section) and lone light-DOM captions (.sac-caption), so the
+       two can never drift. Colour is deliberately NOT here: it is per role —
+       a group heading stands out (--text), a caption stays quiet (--text-muted). */
+    --caption-font:     'Outfit', sans-serif;
+    --caption-size:     0.78rem;
+    --caption-weight:   700;
+    --caption-tracking: 0.12em;
 }
 
 /* --------------------------------------------------------------------------
@@ -493,6 +502,10 @@ kbd {
    to the 32px ribbon recipe — no repeated inline styles anywhere.
    -------------------------------------------------------------------------- */
 .btn {
+    /* A glyph at ~56% of the control box — the kit's icon-to-button ratio.
+       Set on the button (not on a dead `.btn svg` rule) so it crosses into
+       <sac-icon>'s shadow root; 18/32. */
+    --icon-size: 18px;
     background: color-mix(in srgb, var(--fg) 5%, transparent);
     border: 1px solid var(--border);
     color: var(--text);
@@ -569,6 +582,10 @@ kbd {
     border-radius: 50%;
     transition: all 0.2s var(--ease-smooth);
     padding: 0;
+    /* 20/36 = the same ~56% ratio. A custom property crosses into
+       <sac-icon>'s shadow root, which the `.nav-icon-btn svg` rule below
+       cannot — the host tools hold a <sac-icon>, not an inline <svg>. */
+    --icon-size: 20px;
 }
 .nav-icon-btn:hover {
     background: var(--hover);
@@ -579,9 +596,11 @@ kbd {
     transform: translateY(0);
     background: var(--hover-strong);
 }
+/* A light-DOM inline <svg> (rare now — host tools use <sac-icon>) follows the
+   same --icon-size, so both icon forms come out the same size. */
 .nav-icon-btn svg {
-    width: 20px;
-    height: 20px;
+    width: var(--icon-size);
+    height: var(--icon-size);
     stroke-width: 2.2;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -597,10 +616,29 @@ a.nav-icon-btn { text-decoration: none; }
     border-radius: 999px;
     font-size: 0.8rem;
 }
+/* The avatar variant: the button wears an identity <sac-avatar> instead of an
+   icon glyph — a signed-in user in the ribbon (sac-nav host tools). The base
+   button is already a round, padding-0 target and the avatar carries its own
+   round shape, so this only sizes the avatar to sit inside with the usual
+   hover ring. Combines with .labeled (avatar + name in the pill). */
+.nav-icon-btn.avatar { --avatar-size: 26px; }
 
 /* --------------------------------------------------------------------------
    9. Panels, cards, menus, logs (CSS patterns — documented in the style guide)
    -------------------------------------------------------------------------- */
+/* Caption / eyebrow: the section-title shape as a light-DOM utility, so an app
+   can label a lone caption without hand-copying sac-section's title. Both read
+   the --caption-* tokens; a standalone caption is quiet (--text-muted), while a
+   section heading overrides to --text — set your own colour to lift it. */
+.sac-caption {
+    font-family: var(--caption-font);
+    font-size: var(--caption-size);
+    font-weight: var(--caption-weight);
+    letter-spacing: var(--caption-tracking);
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
 .card {
     background: var(--panel);
     padding: 1.25rem;

@@ -143,7 +143,11 @@
  *           name, icon, href,      // injects into the app's own chrome. The
  *           nav, toolbar           // app assigns it to its own <sac-nav>
  *       },                         // (nav.host = context.host): ⌂ jump, suite
- *                                  // nav in the burger, controls in the ribbon
+ *                                  // nav in the burger, controls in the ribbon.
+ *                                  // A host may re-declare (init({host}) again):
+ *                                  // this object is mutated in place and a
+ *                                  // sac:host-changed event repaints the nav —
+ *                                  // no app cooperation, assign it once.
  *       deepLink: {
  *           set(x)                 // window: writes ?app=<id>&<x entries> via
  *                                  // history.replaceState; set(null) cleans the
@@ -500,7 +504,12 @@
             rec.mounted = true;
             const manifest = registry.get(id);
             if (manifest && typeof rec.el.mount === "function") {
-                try { rec.el.mount(makeContext(manifest, rec.params)); }
+                const ctx = makeContext(manifest, rec.params);
+                // Retain the injected host object so a later host re-declaration
+                // can mutate it in place — the app's nav holds it by reference
+                // (nav.host = context.host). Null when the host injected none.
+                rec.host = ctx.host;
+                try { rec.el.mount(ctx); }
                 catch (err) { console.error(`[sac.apps] ${id}.mount() threw:`, err); }
             }
             rec.params = null;
@@ -828,6 +837,26 @@
 
     /* ------------------------------------------------------------ init --- */
 
+    /**
+     * A host that re-declares (init({host}) again — the signed-in user was
+     * renamed, say) must reach the views it already mounted. It cannot touch an
+     * app's nav (the hull rule holds), but the app handed context.host to its
+     * nav BY REFERENCE (nav.host = context.host), so mutating that same object
+     * in place refreshes the nav's data; a sac:host-changed event then tells
+     * every sac-nav to re-read it. A view mounted while the host injected
+     * nothing (host was null) has no object to mutate and cannot be reached this
+     * way — a host that ever injects should inject from boot.
+     */
+    function syncMountedHosts() {
+        views.forEach((rec) => {
+            const h = rec.host;
+            if (!h) return;
+            Object.keys(h).forEach((k) => { if (!(k in hostInfo)) delete h[k]; });
+            Object.assign(h, hostInfo);
+        });
+        document.dispatchEvent(new CustomEvent("sac:host-changed"));
+    }
+
     function init(options) {
         const opts = options || {};
         // The stage and the home section. Defaults keep the plain SPA case
@@ -837,7 +866,12 @@
         // What this host injects into every view's own chrome (context.host):
         // its name, the jump-home address, and optionally its suite nav and
         // toolbar controls (see the header).
-        if (opts.host) hostInfo = Object.assign({}, opts.host);
+        if (opts.host) {
+            hostInfo = Object.assign({}, opts.host);
+            // Re-declaration on a running host (e.g. the signed-in user was
+            // renamed): reach the views already mounted with the old snapshot.
+            if (inited) syncMountedHosts();
+        }
         if (!baseTitle) baseTitle = document.title;
 
         if (!inited) {
