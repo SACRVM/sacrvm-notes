@@ -316,19 +316,17 @@ class SacWindow extends HTMLElement {
                 color: color-mix(in srgb, var(--fg) 78%, var(--bg));
                 font-size: 0.9rem;
                 line-height: 1.6;
-            }
-
-            /* Scrollbar theme — duplicated because the global rule in ui.css
-               doesn't pierce Shadow DOM. */
-            .content::-webkit-scrollbar {
-                width: 6px;
-            }
-            .content::-webkit-scrollbar-track {
-                background: transparent;
-            }
-            .content::-webkit-scrollbar-thumb {
-                background: var(--scrollbar-thumb);
-                border-radius: var(--radius-s);
+                /* Scrollbar: the STANDARD properties, not ::-webkit-scrollbar.
+                   --scrollbar-thumb and scrollbar-color inherit through the
+                   shadow boundary from ui.css, but scrollbar-width does NOT
+                   inherit — so a shadow scroller computes width:auto and
+                   Chrome paints the native full-width bar (arrow buttons on
+                   Windows). Once scrollbar-color applies Chrome also ignores
+                   any ::-webkit-scrollbar theming, which is why the old webkit
+                   block here was silently inert. Setting scrollbar-width
+                   explicitly restores the thin themed bar. */
+                scrollbar-width: thin;
+                scrollbar-color: var(--scrollbar-thumb) transparent;
             }
 
             .resize-handle {

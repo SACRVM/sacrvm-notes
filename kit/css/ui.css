@@ -239,8 +239,10 @@ sac-window {
     --danger-text:      color-mix(in oklab, var(--danger)      var(--danger-text-pct),      var(--text-solve));
     --ok-text:          color-mix(in oklab, var(--ok)          var(--ok-text-pct),          var(--text-solve));
 
-    /* Scrollbar parts (also duplicated inside scrollable Shadow DOM — the
-       global rules below do not pierce shadow roots). */
+    /* Scrollbar thumb colours. As custom properties these DO inherit through
+       shadow boundaries, so a shadow scroller reuses them by setting the
+       standard scrollbar-color/-width itself (scrollbar-width alone does not
+       inherit — see sac-window .content / sac-nav .panel). */
     --scrollbar-thumb:       color-mix(in srgb, var(--fg) 18%, transparent);
     --scrollbar-thumb-hover: color-mix(in srgb, var(--fg) 32%, transparent);
 }

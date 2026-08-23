@@ -49,6 +49,10 @@
             win.setAttribute("title", title);
             win.setAttribute("controls", "close");
             win.setAttribute("width", "440px");
+            // An About is sized to its content (below) and can't be maximized —
+            // resizing it is meaningless, and the resize grip would otherwise
+            // sit on the scroll track of a long notice list. Drop it.
+            win.setAttribute("no-resize", "");
             win.dataset.about = key;
 
             const body = document.createElement("div");
@@ -106,7 +110,24 @@
             document.body.appendChild(win);
             // Register before opening so the open animation starts from closed;
             // a timeout, not rAF (a background tab paints no frames).
-            setTimeout(() => { win.open(); win.bringToFront?.(); }, 0);
+            setTimeout(() => {
+                win.open();
+                win.bringToFront?.();
+                // Fit the window to its content. sac-window has no intrinsic
+                // height (it defaults to 300px), which clipped a longer About
+                // mid-sentence. Measure the now-laid-out body, add the window
+                // chrome, and cap so the window never runs past the viewport
+                // bottom from its top edge — a very long notice list then
+                // scrolls inside .content instead of overflowing off-screen.
+                const bar = win.shadowRoot?.querySelector(".title-bar");
+                const chrome = (bar ? bar.offsetHeight : 44)
+                    + 40   // .content padding (20px top + bottom)
+                    + 2;   // container borders
+                const top = parseInt(win.style.top, 10) || 100;
+                const maxH = Math.max(200, window.innerHeight - top - 24);
+                const fit = Math.min(body.scrollHeight + chrome, maxH);
+                win.style.height = Math.max(Math.min(fit, maxH), 160) + "px";
+            }, 0);
             return win;
         },
     };

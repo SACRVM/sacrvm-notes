@@ -324,6 +324,12 @@ class SacNav extends HTMLElement {
                     z-index: 2;
                     padding: 1.5rem 0;
                     overflow-y: auto;
+                    /* Standard scrollbar properties — scrollbar-width does not
+                       inherit into a shadow root, so it must be set here or
+                       Chrome paints the native full-width (arrowed) bar and
+                       ignores ::-webkit-scrollbar. See sac-window .content. */
+                    scrollbar-width: thin;
+                    scrollbar-color: var(--scrollbar-thumb) transparent;
                 }
                 .panel.open {
                     transform: translateX(0);
@@ -396,21 +402,6 @@ class SacNav extends HTMLElement {
                        never read as one row. 1px neutral, never a thick colour. */
                     padding-left: 0.6rem;
                     border-left: 1px solid var(--border);
-                }
-
-                /* Scrollbar theme — duplicated because the global rule in
-                   ui.css doesn't pierce Shadow DOM. */
-                ::-webkit-scrollbar { width: 10px; height: 10px; }
-                ::-webkit-scrollbar-track { background: transparent; }
-                ::-webkit-scrollbar-thumb {
-                    background: var(--scrollbar-thumb);
-                    background-clip: content-box;
-                    border: 2px solid transparent;
-                    border-radius: var(--radius-s);
-                }
-                ::-webkit-scrollbar-thumb:hover {
-                    background: var(--scrollbar-thumb-hover);
-                    background-clip: content-box;
                 }
             </style>
             <nav class="ribbon">
