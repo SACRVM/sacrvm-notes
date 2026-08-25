@@ -7,6 +7,13 @@
  * it on hover / focus. The host is inline-block, so wrapping an existing
  * control does not change the layout around it.
  *
+ * ATTACH MODE — for an element a wrapper cannot survive on (a component that
+ * OWNS and REBUILDS its children, e.g. a swatch inside sac-swatch-grid, where
+ * any wrapper is discarded on the next render): `sac.tooltip.attach(el, text,
+ * opts)` hangs the same bubble off `el` directly, listening to its hover/focus
+ * and anchoring to its rect. Returns { update, destroy }; call destroy() when
+ * `el` leaves the DOM. See the helper + attachTo() below.
+ *
  * The bubble is `position: fixed` and shown in the top layer (`popover`), so
  * it escapes every `overflow: hidden` ancestor AND every transformed one — a
  * transform/filter/backdrop-filter ancestor would otherwise become its
@@ -48,6 +55,9 @@ class SacTooltip extends HTMLElement {
         this._visible = false;
         this._timer = null;
         this._lowerTimer = null;
+        // The element the bubble listens to and anchors against. Defaults to
+        // the host (wrapper mode); attachTo() points it at an external element.
+        this._anchorEl = this;
         this._onPointerEnter = this._onPointerEnter.bind(this);
         this._onPointerLeave = this._onPointerLeave.bind(this);
         this._onFocusIn = this._onFocusIn.bind(this);
@@ -59,18 +69,12 @@ class SacTooltip extends HTMLElement {
 
     connectedCallback() {
         if (!this.shadowRoot.firstChild) this._render();
-        this.addEventListener("pointerenter", this._onPointerEnter);
-        this.addEventListener("pointerleave", this._onPointerLeave);
-        this.addEventListener("focusin", this._onFocusIn);
-        this.addEventListener("focusout", this._onFocusOut);
+        this._bindAnchor();
         this._sync();
     }
 
     disconnectedCallback() {
-        this.removeEventListener("pointerenter", this._onPointerEnter);
-        this.removeEventListener("pointerleave", this._onPointerLeave);
-        this.removeEventListener("focusin", this._onFocusIn);
-        this.removeEventListener("focusout", this._onFocusOut);
+        this._unbindAnchor();
         this._teardownGlobals();
         this._teardownPinned();
         this._clearTimer();
@@ -79,6 +83,39 @@ class SacTooltip extends HTMLElement {
             this._lowerTimer = null;
         }
         this._visible = false;
+    }
+
+    /* Anchor wiring. Wrapper mode listens on the host (events bubble up from
+       the slotted trigger); attach mode listens on the external element. */
+    _bindAnchor() {
+        const a = this._anchorEl;
+        a.addEventListener("pointerenter", this._onPointerEnter);
+        a.addEventListener("pointerleave", this._onPointerLeave);
+        a.addEventListener("focusin", this._onFocusIn);
+        a.addEventListener("focusout", this._onFocusOut);
+    }
+
+    _unbindAnchor() {
+        const a = this._anchorEl;
+        a.removeEventListener("pointerenter", this._onPointerEnter);
+        a.removeEventListener("pointerleave", this._onPointerLeave);
+        a.removeEventListener("focusin", this._onFocusIn);
+        a.removeEventListener("focusout", this._onFocusOut);
+    }
+
+    /** Attach mode: anchor the bubble to an EXTERNAL element instead of
+     *  wrapping a trigger. The host then wraps nothing (collapsed to 0×0) and
+     *  the bubble follows `el`'s hover/focus and viewport rect — the answer for
+     *  a component that owns and rebuilds its children, where a wrapper cannot
+     *  survive. Usually reached through sac.tooltip.attach(). */
+    attachTo(el) {
+        if (!el || el === this._anchorEl) return this;
+        if (this.isConnected) this._unbindAnchor();
+        this._anchorEl = el;
+        this.toggleAttribute("data-attached", el !== this);
+        if (this.isConnected) this._bindAnchor();
+        if (this._isShown()) this._position();
+        return this;
     }
 
     attributeChangedCallback(name) {
@@ -171,6 +208,16 @@ class SacTooltip extends HTMLElement {
                 :host {
                     display: inline-block;
                     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                }
+
+                /* Attach mode: the host wraps nothing — take it out of flow
+                   entirely so it never adds a stray line box. The bubble is a
+                   popover in the top layer, so it is unaffected by this. */
+                :host([data-attached]) {
+                    position: absolute;
+                    width: 0;
+                    height: 0;
+                    overflow: hidden;
                 }
 
                 .bubble {
@@ -295,7 +342,7 @@ class SacTooltip extends HTMLElement {
         const margin = 8;
         const vw = window.innerWidth;
         const vh = window.innerHeight;
-        const t = this.getBoundingClientRect();
+        const t = this._anchorEl.getBoundingClientRect();
 
         // An anchor entirely outside the viewport gets no bubble — the clamp
         // at the end would otherwise pin it to a viewport edge, detached.
@@ -354,3 +401,33 @@ class SacTooltip extends HTMLElement {
 }
 
 customElements.define("sac-tooltip", SacTooltip);
+
+/* Attach mode helper. Give the kit bubble to an element that a <sac-tooltip>
+   cannot wrap — the one place the wrapper shape breaks down: a component that
+   OWNS and REBUILDS its children (a swatch in a grid, a cell in a virtual list)
+   would discard any wrapper on the next render. Instead, hang the bubble off
+   the element itself. */
+(window.sac = window.sac || {}).tooltip = {
+    /**
+     * attach(el, text, opts?) → { el, update(text), destroy() }
+     *
+     * Creates a detached <sac-tooltip> on document.body that follows `el`'s
+     * hover/focus and rect. `opts`: { placement, distance } (same as the
+     * attributes). The bubble does NOT clean itself up — call destroy() when
+     * the target leaves the DOM (a component does this in disconnectedCallback).
+     */
+    attach(el, text, opts = {}) {
+        if (!el) return null;
+        const tip = document.createElement("sac-tooltip");
+        if (opts.placement) tip.setAttribute("placement", opts.placement);
+        if (opts.distance != null) tip.setAttribute("distance", String(opts.distance));
+        tip.setAttribute("content", text == null ? "" : String(text));
+        document.body.appendChild(tip);
+        tip.attachTo(el);
+        return {
+            el: tip,
+            update(t) { tip.setAttribute("content", t == null ? "" : String(t)); },
+            destroy() { try { tip.hide(); } catch (e) { /* not shown */ } tip.remove(); },
+        };
+    },
+};

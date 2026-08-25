@@ -30,14 +30,22 @@
  *              entry, a scale mark). Muted text that is part of the swatch,
  *              not a badge on top of it. When no `label` is set, the caption
  *              joins the accessible name ("500 · #64748b").
+ *   tooltip  — presence opts the cell into the KIT tooltip bubble (styled,
+ *              keyboard-visible, no 1s OS delay) instead of the native `title`.
+ *              Text is the attribute value, falling back to the label /
+ *              accessible name. Uses sac-tooltip's ATTACH mode (sac.tooltip.
+ *              attach), so it reaches a swatch a wrapper cannot and survives the
+ *              grid's data-driven `.colors` rebuild. Replaces the native title
+ *              while active so the two never double up.
  *   selected — boolean, reflected. Draws a 2px accent OUTLINE (2px offset) —
  *              a focus-ring-style outline, not a border, per kit rule. Set
  *              by the grid in selectable mode, or directly by an app using
  *              a swatch outside a grid.
  *   disabled — boolean, reflected. Unclickable, unfocusable, skipped by the
  *              grid's keyboard navigation and excluded from roving tabindex.
- * <sac-swatch> properties: value/label/count/caption (string get/set; ""
- *   clears label/count/caption), selected/disabled (boolean get/set).
+ * <sac-swatch> properties: value/label/count/caption/tooltip (string get/set;
+ *   "" clears label/count/caption; tooltip also takes true/false), selected/
+ *   disabled (boolean get/set).
  * <sac-swatch> method: focus() — forwards to the shadow-internal <button>
  *   (the host itself is not focusable, same convention as <sac-tab>).
  *
@@ -51,7 +59,7 @@
  *                the grid's role to listbox/option (plain "group" otherwise).
  * <sac-swatch-grid> property:
  *   colors — get/set. The setter accepts an array of
- *            { value, label?, count?, caption?, selected?, disabled? } and REBUILDS the light-DOM
+ *            { value, label?, count?, caption?, tooltip?, selected?, disabled? } and REBUILDS the light-DOM
  *            <sac-swatch> children from scratch — the ONE sanctioned bulk
  *            rebuild in this file, meant for JS-driven data (a palette
  *            loaded from a file, a computed ramp). The getter reads the
@@ -92,7 +100,7 @@
        <sac-swatch>
        ==================================================================== */
     class SacSwatch extends HTMLElement {
-        static get observedAttributes() { return ["value", "label", "count", "caption", "selected", "disabled"]; }
+        static get observedAttributes() { return ["value", "label", "count", "caption", "tooltip", "selected", "disabled"]; }
 
         constructor() {
             super();
@@ -102,11 +110,19 @@
             // by the sibling <sac-swatch-grid> defined in this same file.
             this._tabbable   = false;
             this._optionRole = false;
+            this._tip        = null;   // attach-mode tooltip handle (opt-in)
         }
 
         connectedCallback() {
             if (!this.shadowRoot.firstChild) this._render();
             this._refresh();
+        }
+
+        disconnectedCallback() {
+            // The attach-mode bubble lives on document.body — release it when
+            // the swatch leaves the DOM (the grid's `.colors` rebuild removes
+            // and recreates swatches, so this runs on every data-driven update).
+            if (this._tip) { this._tip.destroy(); this._tip = null; }
         }
 
         attributeChangedCallback() {
@@ -134,6 +150,14 @@
         set caption(v) {
             if (v == null || v === "") this.removeAttribute("caption");
             else this.setAttribute("caption", String(v));
+        }
+
+        get tooltip() { return this.getAttribute("tooltip"); }
+        set tooltip(v) {
+            // Presence opts in; `true` opts in with the label fallback, a string
+            // sets the text, null/false/"" turns it off.
+            if (v == null || v === false) this.removeAttribute("tooltip");
+            else this.setAttribute("tooltip", v === true ? "" : String(v));
         }
 
         get selected() { return this.hasAttribute("selected"); }
@@ -329,6 +353,22 @@
                 this._btn.removeAttribute("title");
             }
 
+            // Opt-in kit tooltip bubble: the attribute's PRESENCE turns it on,
+            // its value is the text (falling back to the accessible name, which
+            // is label-first). It uses sac-tooltip's attach mode, so it reaches
+            // the swatch a wrapper never could, and it REPLACES the native title
+            // while active so the two do not double up. Kept in sync in place.
+            const wantsTip = this.hasAttribute("tooltip");
+            const tipText  = (this.getAttribute("tooltip") || accessibleName || "").trim();
+            if (wantsTip && tipText && window.sac && sac.tooltip && sac.tooltip.attach) {
+                this._btn.removeAttribute("title");
+                if (this._tip) this._tip.update(tipText);
+                else this._tip = sac.tooltip.attach(this._btn, tipText);
+            } else if (this._tip) {
+                this._tip.destroy();
+                this._tip = null;
+            }
+
             const count = this.count;
             const hasCount = count != null && count !== "";
             this._countEl.textContent = hasCount ? count : "";
@@ -391,7 +431,7 @@
         /* --------------------------------------------------------- API */
 
         /**
-         * [{ value, label?, count?, selected? }] — get reads the current
+         * [{ value, label?, count?, caption?, tooltip?, selected?, disabled? }] — get reads the current
          * <sac-swatch> children back into this shape; set REBUILDS them.
          * The one sanctioned bulk rebuild — for JS-driven data only, never
          * used internally for selection or attribute sync.
@@ -402,6 +442,7 @@
                 if (s.hasAttribute("label")) item.label = s.getAttribute("label");
                 if (s.hasAttribute("count")) item.count = s.getAttribute("count");
                 if (s.hasAttribute("caption")) item.caption = s.getAttribute("caption");
+                if (s.hasAttribute("tooltip")) item.tooltip = s.getAttribute("tooltip") || true;
                 if (s.hasAttribute("selected")) item.selected = true;
                 if (s.hasAttribute("disabled")) item.disabled = true;
                 return item;
@@ -416,6 +457,7 @@
                 if (item && item.label != null && item.label !== "") el.setAttribute("label", String(item.label));
                 if (item && item.count != null && item.count !== "") el.setAttribute("count", String(item.count));
                 if (item && item.caption != null && item.caption !== "") el.setAttribute("caption", String(item.caption));
+                if (item && item.tooltip != null && item.tooltip !== false) el.setAttribute("tooltip", item.tooltip === true ? "" : String(item.tooltip));
                 if (item && item.selected) el.setAttribute("selected", "");
                 if (item && item.disabled) el.setAttribute("disabled", "");
                 frag.appendChild(el);
