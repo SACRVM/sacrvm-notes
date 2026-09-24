@@ -51,6 +51,18 @@
  *
  * All labels are written with textContent — route labels, toolbar titles and
  * command labels are app data, never markup.
+ *
+ * Compact/touch:
+ *   On a compact viewport (≤768px, or a phone held sideways) the panel becomes a full-width
+ *   sheet anchored to the top edge (below env(safe-area-inset-top)), rounded
+ *   only at the bottom — the mirror of sac-dialog's bottom sheet, and the
+ *   half of the screen an on-screen keyboard leaves free. Tapping the dimmed
+ *   area below it closes it (there is no Escape key on a phone). Under
+ *   (pointer: coarse) every row is at least 44px tall and the search field
+ *   uses 16px type (below that iOS zooms the page on focus). Nothing is
+ *   hover-only: the pointer highlight just follows the finger, a tap runs
+ *   the row. mod+k does not exist on a phone — an app that wants the palette
+ *   there gives it a button calling sac.palette.open().
  */
 (function () {
 
@@ -434,7 +446,8 @@
                     .panel {
                         pointer-events: auto;
                         box-sizing: border-box;
-                        width: min(560px, 92vw);
+                        /* Never wider than the viewport minus 8px a side. */
+                        width: min(560px, 92vw, 100vw - 16px);
                         display: flex;
                         flex-direction: column;
                         overflow: hidden;
@@ -544,6 +557,10 @@
                         padding: 2px 6px;
                         color: var(--text);
                     }
+                    /* A touch-only device has no keyboard to press them with. */
+                    @media (hover: none) and (pointer: coarse) {
+                        kbd { display: none; }
+                    }
 
                     .empty {
                         padding: 18px 12px 22px;
@@ -559,10 +576,30 @@
                     .list::-webkit-scrollbar-track { background: transparent; }
                     .list::-webkit-scrollbar-thumb {
                         background: var(--scrollbar-thumb);
-                        border-radius: var(--radius-s);
+                        border-radius: 999px;
                     }
                     .list::-webkit-scrollbar-thumb:hover {
                         background: var(--scrollbar-thumb-hover);
+                    }
+
+                    /* Compact: a full-width sheet hanging from the top edge,
+                       clear of the notch / status bar. Top, not centre: the
+                       on-screen keyboard takes the bottom half. */
+                    @media (max-width: 768px), (max-height: 480px) and (pointer: coarse) {
+                        .layer { padding: 0; }
+                        .panel {
+                            width: 100%;
+                            border-top: none;
+                            border-radius: 0 0 var(--radius-l) var(--radius-l);
+                            padding-top: env(safe-area-inset-top, 0px);
+                        }
+                        /* dvh: tracks the space an on-screen keyboard leaves
+                           (vh first as the fallback). */
+                        .list { max-height: 60vh; max-height: 60dvh; }
+                    }
+                    @media (pointer: coarse) {
+                        .row { min-height: 44px; box-sizing: border-box; }
+                        input { font-size: max(16px, 1rem); }
                     }
 
                     @keyframes cp-fade { to { opacity: 1; } }

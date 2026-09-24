@@ -28,6 +28,19 @@
  *
  * Methods:
  *   open() / close() / toggle() — show, hide, flip.
+ *   openAt(point) — open at a viewport point instead of under the trigger:
+ *          a right-click context menu. `point` is the contextmenu/pointer
+ *          event itself or any { clientX, clientY }. The panel's top-left
+ *          sits at the point; it flips left / up when there is no room and
+ *          stays clamped 8px inside the viewport. No trigger needed — a
+ *          <sac-menu> with only items is a context menu. Scrolling closes a
+ *          point-anchored menu (the point no longer means anything), and
+ *          Escape returns focus to whatever had it before.
+ *
+ *            canvas.addEventListener("contextmenu", (e) => {
+ *                e.preventDefault();
+ *                menu.openAt(e);
+ *            });
  *
  * Events:
  *   sac:select — detail { action } — the clicked item's data-action.
@@ -43,6 +56,15 @@
  *   Enter               — activates the focused item (native button click)
  *   Escape              — closes and returns focus to the trigger
  *   Tab                 — closes and lets focus move on
+ *
+ * Compact/touch:
+ *   The panel is never wider than the viewport minus 8px a side
+ *   (min(180px, 100vw - 16px) minimum, 100vw - 16px maximum), so the 8px
+ *   clamp holds on a 360px phone. Under (pointer: coarse) every item is at
+ *   least 44px tall. Nothing is hover-only: the trigger opens on tap and the
+ *   hover highlight is decoration (the menu closes on the tap anyway). A
+ *   closed panel takes no layout at all, so a menu at the right edge of a
+ *   phone page never adds horizontal scroll.
  */
 class SacMenu extends HTMLElement {
     static get observedAttributes() { return ["open"]; }
@@ -51,6 +73,7 @@ class SacMenu extends HTMLElement {
         super();
         this.attachShadow({ mode: "open" });
         this._lowerTimer = null;
+        this._point = null;          // { x, y } while opened by openAt()
         this._onDocPointer = this._onDocPointer.bind(this);
         this._onDocKeydown = this._onDocKeydown.bind(this);
         this._onReposition = this._onReposition.bind(this);
@@ -86,6 +109,7 @@ class SacMenu extends HTMLElement {
         } else {
             this._lower();
             this._clearHighlight();
+            this._point = null;
         }
     }
 
@@ -104,6 +128,15 @@ class SacMenu extends HTMLElement {
     toggle() {
         if (this.hasAttribute("open")) this.close();
         else this.open();
+    }
+
+    openAt(point) {
+        const x = Number(point && point.clientX), y = Number(point && point.clientY);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) { this.open(); return; }
+        if (!this.hasAttribute("open")) this._restoreFocus = document.activeElement;
+        this._point = { x, y };
+        if (this.hasAttribute("open")) this._position();   // re-open elsewhere
+        else this.setAttribute("open", "");
     }
 
     /* ------------------------------------------------------------- render */
@@ -129,16 +162,20 @@ class SacMenu extends HTMLElement {
                    invisible, with nothing in the console. The top layer is
                    outside that chain entirely.
 
-                   The author display: flex below beats the UA's
-                   [popover]:not(:popover-open) { display: none }, which is
-                   deliberate: the panel keeps its own opacity/visibility
-                   transition instead of snapping through display. */
+                   The panel leaves layout only once it has left the top layer
+                   (see .panel:not(:popover-open) below) — after the close
+                   fade, not at the start of it — so it keeps its own
+                   opacity/visibility transition instead of snapping. */
                 .panel {
                     position: fixed;
                     inset: auto;                   /* the UA pins popovers to all four sides… */
                     margin: 0;                     /* …and centres them with auto margins */
                     z-index: 9999;                 /* same layer as sac-chip-input's dropdown */
-                    min-width: 180px;
+                    box-sizing: border-box;
+                    /* Never wider than the viewport minus the 8px clamp margin
+                       a side — a 360px phone still gets the full clamp. */
+                    min-width: min(180px, 100vw - 16px);
+                    max-width: calc(100vw - 16px);
                     background: var(--glass-strong);
                     backdrop-filter: blur(12px);
                     -webkit-backdrop-filter: blur(12px);
@@ -165,6 +202,24 @@ class SacMenu extends HTMLElement {
                     opacity: 1;
                     visibility: visible;
                     transform: translateY(0);
+                }
+                /* Out of the top layer = out of layout. A closed panel that
+                   stays laid out sits at its static position (or wherever it
+                   was last anchored) and, under a transformed ancestor, can
+                   push the page into horizontal scroll on a phone. While it
+                   is still :popover-open (the 160ms close fade, see _lower)
+                   it stays displayed, so the fade-out runs untouched. Browsers
+                   without popover drop this rule (unknown pseudo-class) and
+                   keep the old always-laid-out panel. */
+                .panel:not(:popover-open) { display: none; }
+                /* Coming back from display: none has no "before" style to
+                   transition from — @starting-style supplies the closed look
+                   so the open fade still plays. */
+                @starting-style {
+                    :host([open]) .panel {
+                        opacity: 0;
+                        transform: translateY(-4px);
+                    }
                 }
                 @media (prefers-reduced-motion: reduce) {
                     .panel,
@@ -212,6 +267,12 @@ class SacMenu extends HTMLElement {
                     border-top: 1px solid var(--border);
                     margin: 4px 2px;
                     width: auto;
+                }
+
+                /* Touch: a 44px row per item. The look stays a menu row — only
+                   the height grows. */
+                @media (pointer: coarse) {
+                    ::slotted(button) { min-height: 44px; }
                 }
             </style>
             <span class="trigger"><slot name="trigger"></slot></span>
@@ -278,7 +339,10 @@ class SacMenu extends HTMLElement {
         el.setAttribute("aria-expanded", this.hasAttribute("open") ? "true" : "false");
     }
 
-    _onReposition() {
+    _onReposition(e) {
+        // A point has no meaning once the page under it moved: close, as a
+        // native context menu does. Resizes still just re-clamp.
+        if (this._point && e && e.type === "scroll") { this.close(); return; }
         this._position();
     }
 
@@ -287,6 +351,7 @@ class SacMenu extends HTMLElement {
      *  clamped 8px inside the viewport on both axes. */
     _position() {
         if (!this.hasAttribute("open") || !this._panel) return;
+        if (this._point) { this._positionAt(this._point); return; }
         const anchor = this._triggerEl() || this._triggerBox;
         const rect   = anchor.getBoundingClientRect();
         const panel  = this._panel.getBoundingClientRect();
@@ -303,6 +368,19 @@ class SacMenu extends HTMLElement {
         let left = rect.left;
         left = Math.max(margin, Math.min(left, window.innerWidth - panel.width - margin));
 
+        this._panel.style.top  = `${top}px`;
+        this._panel.style.left = `${left}px`;
+    }
+
+    /** Context-menu placement: top-left at the point, flipped left / up
+     *  when the panel would leave the viewport, then clamped 8px inside. */
+    _positionAt({ x, y }) {
+        const panel  = this._panel.getBoundingClientRect();
+        const margin = 8;
+        let left = x + panel.width + margin > window.innerWidth ? x - panel.width : x;
+        let top  = y + panel.height + margin > window.innerHeight ? y - panel.height : y;
+        left = Math.max(margin, Math.min(left, window.innerWidth - panel.width - margin));
+        top  = Math.max(margin, Math.min(top, window.innerHeight - panel.height - margin));
         this._panel.style.top  = `${top}px`;
         this._panel.style.left = `${left}px`;
     }
@@ -345,8 +423,9 @@ class SacMenu extends HTMLElement {
     }
 
     _focusTrigger() {
-        const el = this._triggerEl();
-        if (el && typeof el.focus === "function") el.focus();
+        const el = this._triggerEl() || this._restoreFocus;
+        this._restoreFocus = null;
+        if (el && el.isConnected && typeof el.focus === "function") el.focus({ preventScroll: true });
     }
 
     _onItemClick(e) {

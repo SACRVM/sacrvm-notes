@@ -30,6 +30,16 @@
  *                 Bubbles, NOT composed (native change semantics).
  *   sac:create  — e.detail = { name, color }, bubbles + composed — the host
  *                 persists the new entry and typically refreshes .suggestions.
+ *
+ * Compact/touch: nothing depends on hover — the hover highlight is a mirror
+ * of the keyboard highlight, and a TAP (click) commits a suggestion or a
+ * colour, so a swipe that scrolls the list picks nothing. Under
+ * (pointer: coarse) suggestion rows are 44px, the add button and colour
+ * swatches get 44px hit halos, chips sit 10px apart so their × halos do not
+ * overlap, and the field uses 16px type (no iOS focus zoom). The dropdown is
+ * at most 100vw - 16px wide, clamped 8px inside the viewport, and measures
+ * its room against the visual viewport, so it flips above the field when
+ * the on-screen keyboard is up.
  */
 (function () {
 
@@ -67,6 +77,10 @@ class SacChipInput extends HTMLElement {
         this._onReposition = () => this._positionDropdown();
         window.addEventListener("scroll", this._onReposition, true);
         window.addEventListener("resize", this._onReposition);
+        // The on-screen keyboard shrinks the VISUAL viewport only (window
+        // resize does not fire for it) — re-anchor so the list is not left
+        // underneath the keyboard.
+        window.visualViewport?.addEventListener("resize", this._onReposition);
     }
 
     disconnectedCallback() {
@@ -74,6 +88,7 @@ class SacChipInput extends HTMLElement {
         if (this._onReposition) {
             window.removeEventListener("scroll", this._onReposition, true);
             window.removeEventListener("resize", this._onReposition);
+            window.visualViewport?.removeEventListener("resize", this._onReposition);
         }
     }
 
@@ -168,8 +183,10 @@ class SacChipInput extends HTMLElement {
                     inset: auto;                   /* the UA pins popovers to all four sides… */
                     margin: 0;                     /* …and centres them with auto margins */
                     display: block;
-                    min-width: 220px;
-                    max-width: 360px;
+                    /* Never wider than the viewport minus the 8px clamp
+                       _positionDropdown() keeps on both sides. */
+                    min-width: min(220px, 100vw - 16px);
+                    max-width: min(360px, 100vw - 16px);
                     max-height: 240px;
                     overflow-y: auto;
                     background: color-mix(in srgb, var(--glass-hue) 96%, transparent);
@@ -240,13 +257,49 @@ class SacChipInput extends HTMLElement {
                     letter-spacing: 0.04em;
                 }
 
+                /* Touch: 44px rows and targets, 16px type in the field (below
+                   16px iOS zooms the page on focus), a wider gap so the chips'
+                   × halos do not overlap their neighbours. */
+                @media (pointer: coarse) {
+                    .row { gap: 12px 10px; }
+                    input.entry {
+                        font-size: max(16px, 1rem);
+                        min-height: 44px;
+                        box-sizing: border-box;
+                    }
+                    button.add-btn { position: relative; }
+                    button.add-btn::after,
+                    .swatch-btn::after {
+                        content: "";
+                        position: absolute;
+                        inset: min(0px, calc((100% - 44px) / 2));
+                    }
+                    .opt { min-height: 44px; box-sizing: border-box; }
+                    .picker { gap: 8px; }
+                    .swatch-btn {
+                        position: relative;
+                        width: 36px;
+                        height: 36px;
+                    }
+                }
+                /* A tap leaves :hover stuck — no lifted swatch, no washed
+                   ghost button after the finger is gone. */
+                @media (hover: none) {
+                    button.add-btn:hover {
+                        color: var(--text-muted);
+                        border-color: var(--text-muted);
+                        background: transparent;
+                    }
+                    .swatch-btn:hover { transform: none; border-color: transparent; }
+                }
+
                 /* Scrollbar theme — duplicated because the global rule in
                    ui.css doesn't pierce Shadow DOM. */
                 .dropdown::-webkit-scrollbar { width: 6px; }
                 .dropdown::-webkit-scrollbar-track { background: transparent; }
                 .dropdown::-webkit-scrollbar-thumb {
                     background: var(--scrollbar-thumb);
-                    border-radius: var(--radius-s);
+                    border-radius: 999px;
                 }
             </style>
             <div class="row" id="row">
@@ -346,20 +399,27 @@ class SacChipInput extends HTMLElement {
     }
 
     /** Anchor the fixed-position dropdown to the input's viewport rect.
-     *  Opens downward when there's room, otherwise flips up. */
+     *  Opens downward when there's room, otherwise flips up. The space below
+     *  ends at the visual viewport's bottom — above an open on-screen
+     *  keyboard — and the left edge is clamped 8px inside the viewport so a
+     *  field near the right edge of a phone does not push the list off it. */
     _positionDropdown() {
         if (!this._open || !this._dropdown || !this._entry) return;
         const rect = this._entry.getBoundingClientRect();
         const dropdownMax = 240; // matches max-height
         const margin = 4;
-        const spaceBelow = window.innerHeight - rect.bottom;
+        const vv = window.visualViewport;
+        const viewBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+        const spaceBelow = viewBottom - rect.bottom;
         const spaceAbove = rect.top;
         const openUp = spaceBelow < dropdownMax + margin && spaceAbove > spaceBelow;
         const top = openUp
             ? Math.max(8, rect.top - Math.min(dropdownMax, spaceAbove - margin) - margin)
             : rect.bottom + margin;
         this._dropdown.style.top = `${top}px`;
-        this._dropdown.style.left = `${rect.left}px`;
+        const vw = document.documentElement.clientWidth;
+        const width = this._dropdown.offsetWidth;
+        this._dropdown.style.left = `${Math.max(8, Math.min(rect.left, vw - 8 - width))}px`;
         this._dropdown.style.maxHeight = `${Math.min(dropdownMax, openUp ? spaceAbove - margin : spaceBelow - margin)}px`;
     }
 
@@ -433,9 +493,12 @@ class SacChipInput extends HTMLElement {
                 this._dropdown.querySelectorAll(".opt").forEach(o => o.classList.remove("hl"));
                 el.classList.add("hl");
             });
-            el.addEventListener("mousedown", (e) => {
-                // mousedown so the entry's blur doesn't close us first.
-                e.preventDefault();
+            // mousedown only keeps focus in the entry (so its blur doesn't
+            // close us first); the commit waits for the click, which a finger
+            // only produces on a tap — a swipe that scrolls the list must not
+            // pick whatever row it started on.
+            el.addEventListener("mousedown", (e) => e.preventDefault());
+            el.addEventListener("click", () => {
                 this._highlight = Number(el.dataset.idx);
                 this._commit();
             });
@@ -457,8 +520,8 @@ class SacChipInput extends HTMLElement {
             <div class="picker">${swatches}</div>
         `;
         this._dropdown.querySelectorAll(".swatch-btn").forEach(btn => {
-            btn.addEventListener("mousedown", (e) => {
-                e.preventDefault();
+            btn.addEventListener("mousedown", (e) => e.preventDefault());   // keep focus in the entry
+            btn.addEventListener("click", () => {
                 const color = btn.dataset.color;
                 const name = this._creating;
                 this._creating = null;

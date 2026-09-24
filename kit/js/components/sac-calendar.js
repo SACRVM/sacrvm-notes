@@ -42,7 +42,9 @@
  *           actually changes — re-selecting the selected day stays quiet.
  *
  * CSS custom properties:
- *   --calendar-width — width of the whole calendar. Default 280px.
+ *   --calendar-width — width of the whole calendar. Default 280px (320px
+ *                      under (pointer: coarse), see below). Never wider
+ *                      than its container: the day cells shrink instead.
  *
  * Keyboard (grid pattern, roving tabindex — one day cell in the tab order):
  *   Arrows          — ±1 day (left/right), ±7 days (up/down)
@@ -61,6 +63,15 @@
  *     month label is aria-live="polite" so paging announces itself.
  *   - Requires sac-icon (lib/icons.js + components/sac-icon.js) for the
  *     header chevrons.
+ *
+ * Compact/touch:
+ *   The calendar caps itself at 100% of its container (max-width), so it
+ *   never overflows a 360px phone or a narrow panel — the 7 columns shrink.
+ *   Under (pointer: coarse) the default width grows to 320px so a day cell
+ *   is 44 x 44px (7 x 44 + 6 x 2 gap), and the header wraps: the month label
+ *   takes a line of its own and the six paging buttons get 44px targets
+ *   below it (seven 44px items would leave the label no room). Nothing is
+ *   hover-only — the hover tint is decoration.
  */
 (function () {
 
@@ -399,10 +410,18 @@
                         --calendar-width: 280px;
                         display: inline-block;
                         width: var(--calendar-width);
+                        max-width: 100%;          /* the cells shrink before the page scrolls */
+                        box-sizing: border-box;
                         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
                         color: var(--text);
                         -webkit-user-select: none;
                         user-select: none;
+                    }
+                    /* Touch: 320px = seven 44px day columns + six 2px gaps.
+                       An app's own --calendar-width still wins (it is set on
+                       the element, outranking this :host default). */
+                    @media (pointer: coarse) {
+                        :host { --calendar-width: 320px; }
                     }
 
                     /* --- header ------------------------------------------ */
@@ -523,6 +542,27 @@
                         color: var(--text-dim);
                         opacity: 0.45;
                         cursor: default;
+                    }
+
+                    /* Touch: 44px day cells and paging buttons. The label gets
+                       its own line above the buttons — seven 44px items in one
+                       row would squeeze "September 2026" to an ellipsis — and
+                       the buttons split into a back group and a forward group. */
+                    @media (pointer: coarse) {
+                        .head {
+                            flex-wrap: wrap;
+                            row-gap: 0;
+                        }
+                        .label {
+                            order: -1;
+                            flex-basis: 100%;
+                            padding: 4px 0 2px;
+                        }
+                        /* 44px each, but allowed to shrink: six fixed 44px
+                           buttons wrap 5 + 1 in a calendar under 264px. */
+                        .nav { width: 44px; height: 44px; flex: 0 1 44px; min-width: 32px; }
+                        #next { margin-left: auto; }
+                        .day { height: 44px; font-size: 0.9rem; }
                     }
 
                     @media (prefers-reduced-motion: reduce) {

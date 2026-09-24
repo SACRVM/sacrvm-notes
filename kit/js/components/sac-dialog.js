@@ -24,9 +24,27 @@
  *
  * Arming:
  *   - A button with armAfterMs waits N ms, then receives focus so Enter acts.
- *   - If the user's pointer enters any other button before the arm fires, the
- *     timer is cancelled — we don't steal focus from an actively-interacting
- *     user.
+ *   - If the user's pointer enters (or a finger touches) any other button
+ *     before the arm fires, the timer is cancelled — we don't steal focus
+ *     from an actively-interacting user.
+ *
+ * Buttons: { action, label, kind: "default"|"primary"|"destructive",
+ *            armAfterMs?, disabled? }. setDisabled(action, flag) toggles one
+ *            later (a Save that waits for a filename).
+ *
+ * Validation: dlg.beforeAction = (action) => boolean | Promise<boolean>.
+ *   Called on every BUTTON click (and trigger(action)); answering false keeps
+ *   the dialog open — an overwrite question, an empty required field.
+ *   Escape and the backdrop always cancel (action=null) without asking.
+ *   trigger(action) runs a button's action from code, e.g. Enter in a field.
+ *
+ * Width: --dialog-width (default 420px) on the element — a dialog holding a
+ *   file list wants more room than a question.
+ *
+ * Compact (≤768px, or a phone held sideways — ui.css §15): a BOTTOM SHEET — full width, anchored to the
+ * bottom edge above the home-indicator safe area, at most 85dvh tall with the
+ * body scrolling, actions full-width and stacked (the last button, usually
+ * the primary one, on top). Focus trap and Escape are unchanged.
  */
 class SacDialog extends HTMLElement {
     constructor() {
@@ -112,6 +130,29 @@ class SacDialog extends HTMLElement {
         }
     }
 
+    /** Run a button's action as if clicked: ask beforeAction, then close. */
+    async trigger(action) {
+        if (this._resolved || this._asking) return;
+        if (typeof this.beforeAction === "function") {
+            this._asking = true;
+            let ok;
+            try { ok = await this.beforeAction(action); }
+            catch (err) { console.error("[sac-dialog] beforeAction threw:", err); ok = false; }
+            finally { this._asking = false; }
+            if (ok === false) return;
+        }
+        this.close(action);
+    }
+
+    /** Enable / disable one action's button. */
+    setDisabled(action, flag) {
+        const spec = this.buttons.find((b) => b.action === action);
+        if (spec) spec.disabled = !!flag;
+        const btn = Array.from(this.shadowRoot.querySelectorAll(".btn"))
+            .find((b) => b.dataset.action === String(action));
+        if (btn) btn.disabled = !!flag;
+    }
+
     _startArmTimer() {
         const armed = this.buttons.findIndex(b => b.armAfterMs > 0);
         if (armed < 0) return;
@@ -162,7 +203,7 @@ class SacDialog extends HTMLElement {
 
                 .panel {
                     position: relative;
-                    width: 420px;
+                    width: var(--dialog-width, 420px);
                     max-width: calc(100vw - 32px);
                     /* A content-heavy dialog (an About panel, an explainer)
                        must never outgrow the viewport — centered, both ends
@@ -205,16 +246,25 @@ class SacDialog extends HTMLElement {
                     font-size: 0.9rem;
                     line-height: 1.5;
                     color: var(--text-muted);
-                    /* Scrollbar theme — duplicated because the global rule
-                       in ui.css doesn't pierce Shadow DOM. */
-                    scrollbar-width: thin;
-                    scrollbar-color: var(--scrollbar-thumb) transparent;
                 }
-                .body::-webkit-scrollbar { width: 6px; }
+                /* Scrollbar — the kit recipe (ui.css §5), re-stated because
+                   ::-webkit-scrollbar does not pierce a shadow root. Firefox, which has
+                   no ::-webkit-scrollbar, gets the standard pair instead. */
+                .body::-webkit-scrollbar { width: 10px; height: 10px; }
                 .body::-webkit-scrollbar-track { background: transparent; }
                 .body::-webkit-scrollbar-thumb {
                     background: var(--scrollbar-thumb);
-                    border-radius: var(--radius-s);
+                    background-clip: content-box;
+                    border: 2px solid transparent;
+                    border-radius: 999px;
+                }
+                .body::-webkit-scrollbar-thumb:hover {
+                    background: var(--scrollbar-thumb-hover);
+                    background-clip: content-box;
+                }
+                .body::-webkit-scrollbar-corner { background: transparent; }
+                @supports not selector(::-webkit-scrollbar) {
+                    .body { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
                 }
                 .body ::slotted(p) { margin: 0; }
                 /* No combinators inside ::slotted() — it takes a compound
@@ -253,6 +303,8 @@ class SacDialog extends HTMLElement {
                     outline: 2px solid var(--accent);
                     outline-offset: 2px;
                 }
+                .btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
+                .actions:empty { display: none; }
 
                 /* Ghost buttons: translucent washes, so the ink must follow
                    the THEME (-text variants / --text), never --on-accent —
@@ -295,6 +347,35 @@ class SacDialog extends HTMLElement {
                 @keyframes fade-in {
                     to { opacity: 1; }
                 }
+                @keyframes sheet-in {
+                    from { opacity: 1; transform: translateY(100%); }
+                    to   { opacity: 1; transform: none; }
+                }
+
+                @media (max-width: 768px), (max-height: 480px) and (pointer: coarse) {
+                    :host { align-items: flex-end; }
+                    .panel {
+                        width: 100%;
+                        max-width: 100%;
+                        max-height: 85dvh;
+                        border-bottom: none;
+                        border-radius: var(--radius-l) var(--radius-l) 0 0;
+                        padding-bottom: env(safe-area-inset-bottom, 0px);
+                        transform: translateY(100%);
+                        animation: sheet-in 220ms var(--ease-smooth) forwards;
+                    }
+                    .actions {
+                        flex-direction: column-reverse;
+                        align-items: stretch;
+                    }
+                    .btn { width: 100%; }
+                }
+                @media (pointer: coarse) {
+                    .btn { min-height: 44px; }
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    .backdrop, .panel { animation-duration: 1ms; }
+                }
                 @keyframes pop-in {
                     to { opacity: 1; transform: scale(1); }
                 }
@@ -332,16 +413,21 @@ class SacDialog extends HTMLElement {
             btn.className = "btn" + (spec.kind && spec.kind !== "default" ? " " + spec.kind : "");
             btn.type = "button";
             btn.textContent = spec.label;
-            btn.addEventListener("click", () => this.close(spec.action));
-            btn.addEventListener("mouseenter", () => {
-                // Any pointer interaction with a *different* button cancels
-                // the arm timer so we don't yank focus from the user.
+            btn.dataset.action = spec.action == null ? "" : String(spec.action);
+            btn.disabled = !!spec.disabled;
+            btn.addEventListener("click", () => this.trigger(spec.action));
+            // Any pointer interaction with a *different* button cancels the
+            // arm timer so we don't yank focus from the user. pointerdown is
+            // the touch equivalent: a finger never "enters" before it lands.
+            const disarm = () => {
                 if (this._armTimer != null) {
                     const armedIdx = this.buttons.findIndex(b => b.armAfterMs > 0);
                     const myIdx = this.buttons.indexOf(spec);
                     if (myIdx !== armedIdx) this._cancelArmTimer();
                 }
-            });
+            };
+            btn.addEventListener("mouseenter", disarm);
+            btn.addEventListener("pointerdown", disarm);
             row.appendChild(btn);
         });
     }

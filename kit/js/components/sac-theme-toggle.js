@@ -25,6 +25,20 @@
  *           event (that's reserved for user clicks, same split as
  *           sac-slider's attribute-vs-interaction event model).
  *
+ * Compact/touch: under (pointer: coarse) each of the three buttons gets an
+ * invisible hit halo to 44px tall (the pill keeps its size, so it still fits
+ * the nav ribbon); under (hover: none) no hover tint sticks after a tap.
+ * INSIDE A <sac-nav> on compact (ui.css §15) the ~145px pill would
+ * push the app's own toolbar into the "…" menu, so it collapses to ONE
+ * round button (36px, 44px on touch) that cycles dark → light → auto; its
+ * icon shows the current theme and its label says it ("Theme: Dark").
+ *
+ * Attributes:
+ *   collapse — "never" keeps the pill even in a phone ribbon. Absent = the
+ *              nav collapse above. A toggle placed in page content (a
+ *              settings page) never collapses — it has the room.
+ *   in-nav   — set BY THE COMPONENT when it sits inside a <sac-nav>.
+ *
  * Events:
  *   sac:change — fired on user click only (never on a programmatic .theme set);
  *                detail = { value: theme }, bubbles (not composed).
@@ -45,6 +59,7 @@ class SacThemeToggle extends HTMLElement {
 
     connectedCallback() {
         if (!this.shadowRoot.firstChild) this._render();
+        this.toggleAttribute("in-nav", !!this.closest("sac-nav"));
         const stored = localStorage.getItem("sac-theme");
         const theme = stored === "light" || stored === "auto" ? stored : "dark";
         this._apply(theme);
@@ -75,7 +90,15 @@ class SacThemeToggle extends HTMLElement {
 
     /** Update the active button in place — no re-render. */
     _highlight(theme) {
-        this.shadowRoot.querySelectorAll("button").forEach((btn) => {
+        const cycle = this.shadowRoot.querySelector(".cycle");
+        if (cycle) {
+            cycle.dataset.current = theme;
+            const label = `${t("theme-toggle.label", "Theme")}: ${
+                t("theme-toggle." + theme, theme[0].toUpperCase() + theme.slice(1))}`;
+            cycle.setAttribute("aria-label", label);
+            cycle.title = label;
+        }
+        this.shadowRoot.querySelectorAll(".pill button").forEach((btn) => {
             const active = btn.dataset.theme === theme;
             btn.classList.toggle("active", active);
             btn.setAttribute("aria-pressed", String(active));
@@ -137,6 +160,56 @@ class SacThemeToggle extends HTMLElement {
                     background: var(--accent-fill);
                     color: var(--on-accent);
                 }
+                /* Touch: the pill keeps its look (it sits in the 50px nav
+                   ribbon); each button gets an invisible halo to 44px —
+                   min(): only a short axis grows, so neighbours do not
+                   overlap sideways. */
+                @media (pointer: coarse) {
+                    button { position: relative; }
+                    button::after {
+                        content: "";
+                        position: absolute;
+                        inset: min(0px, calc((100% - 44px) / 2));
+                    }
+                }
+                @media (hover: none) {
+                    button:hover { color: var(--text-muted); }
+                    button.active:hover { color: var(--on-accent); }
+                }
+
+                /* The phone-ribbon form: one round button that cycles. The
+                   .nav-icon-btn recipe, written out (ui.css does not pierce
+                   a shadow root). Only the icon of the current theme shows. */
+                .cycle {
+                    display: none;
+                    width: 36px;
+                    height: 36px;
+                    padding: 0;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 50%;
+                    color: var(--text-muted);
+                }
+                .cycle svg { width: 20px; height: 20px; display: none; }
+                .cycle[data-current="dark"]  .i-dark,
+                .cycle[data-current="light"] .i-light,
+                .cycle[data-current="auto"]  .i-auto { display: block; }
+                .cycle:hover { background: var(--hover); color: var(--text); }
+                button:focus-visible {
+                    outline: 2px solid var(--accent);
+                    outline-offset: 2px;
+                }
+                @media (max-width: 768px), (max-height: 480px) and (pointer: coarse) {
+                    :host([in-nav]:not([collapse="never"])) .pill { display: none; }
+                    :host([in-nav]:not([collapse="never"])) .cycle { display: inline-flex; }
+                }
+                @media (pointer: coarse) {
+                    .cycle { width: 44px; height: 44px; }
+                    .cycle::after { content: none; }
+                }
+                @media (hover: none) {
+                    .cycle:hover { background: none; color: var(--text-muted); }
+                }
                 @media (prefers-reduced-motion: reduce) {
                     button { transition: none; }
                 }
@@ -146,10 +219,18 @@ class SacThemeToggle extends HTMLElement {
                 <button type="button" data-theme="light">${L.light}</button>
                 <button type="button" data-theme="auto">${L.auto}</button>
             </div>
+            <button type="button" class="cycle">
+                <svg class="i-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                <svg class="i-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                <svg class="i-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor"/></svg>
+            </button>
         `;
-        this.shadowRoot.querySelectorAll("button").forEach((btn) => {
+        this.shadowRoot.querySelectorAll(".pill button").forEach((btn) => {
             btn.addEventListener("click", () => this._select(btn.dataset.theme));
         });
+        const order = ["dark", "light", "auto"];
+        this.shadowRoot.querySelector(".cycle").addEventListener("click", () =>
+            this._select(order[(order.indexOf(this._theme) + 1) % order.length]));
     }
 }
 

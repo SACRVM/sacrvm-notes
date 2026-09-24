@@ -123,6 +123,20 @@
     --radius-m: 4px;   /* controls: buttons, inputs, chips, menu items, tabs */
     --radius-l: 6px;   /* surfaces: panels, cards, tiles, windows, dialogs, popovers, toasts */
 
+    /* Small ghost icon button — ONE measure for the light-DOM .icon-btn and
+       the shadow buttons that must match it (sac-copy-button). Custom
+       properties cross shadow roots; a class does not. 14/26 ≈ the kit's
+       ~56% icon-to-box ratio. */
+    --icon-btn-size: 26px;
+    --icon-btn-icon: 14px;
+
+    /* Tool button — ONE measure for <sac-toolbox>'s tools and the light-DOM
+       .icon-btn.tool beside them (a selection-actions row under a tool box),
+       so the two can never drift. 18/32 is the same ~56% ratio. Grows to
+       44px under a coarse pointer (§15). */
+    --tool-btn-size: 32px;
+    --tool-btn-icon: 18px;
+
     /* Caption / eyebrow type — the ONE shared shape for uppercase section
        titles (sac-section) and lone light-DOM captions (.sac-caption), so the
        two can never drift. Colour is deliberately NOT here: it is per role —
@@ -203,6 +217,16 @@ sac-window {
     --hover:         color-mix(in srgb, var(--fg) 8%, transparent);   /* hover wash        */
     --hover-strong:  color-mix(in srgb, var(--fg) 14%, transparent);  /* active/press wash */
 
+    /* Transparency checker. --checker is the translucent square a CSS
+       checkerboard lays over whatever surface it sits on (the .checker
+       utility, color wells, swatches). --checker-a/-b are an OPAQUE pair for
+       canvases, which cannot composite over the page (sac-pixel-canvas).
+       --pixel-grid is the hairline between enlarged pixels. */
+    --checker:    color-mix(in srgb, var(--fg) 10%, transparent);
+    --checker-a:  color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --checker-b:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --pixel-grid: color-mix(in srgb, var(--fg) 9%, transparent);
+
     /* Accent derivations — follow --accent automatically, so the per-app
        accent override re-themes these too. */
     --accent-strong: color-mix(in oklab, var(--accent) 82%, var(--sink)); /* hover of primary */
@@ -240,9 +264,8 @@ sac-window {
     --ok-text:          color-mix(in oklab, var(--ok)          var(--ok-text-pct),          var(--text-solve));
 
     /* Scrollbar thumb colours. As custom properties these DO inherit through
-       shadow boundaries, so a shadow scroller reuses them by setting the
-       standard scrollbar-color/-width itself (scrollbar-width alone does not
-       inherit — see sac-window .content / sac-nav .panel). */
+       shadow boundaries, so a shadow scroller reuses them in its own copy of
+       the section 5 recipe (see sac-window .content / sac-nav .panel). */
     --scrollbar-thumb:       color-mix(in srgb, var(--fg) 18%, transparent);
     --scrollbar-thumb-hover: color-mix(in srgb, var(--fg) 32%, transparent);
 }
@@ -316,10 +339,20 @@ sac-window {
 /* --------------------------------------------------------------------------
    5. Scrollbars — global. NOTE: `*` does NOT pierce Shadow DOM; components
    with scrollable shadow content must duplicate these rules inside.
+
+   Chromium and Safari draw the KIT's bar (::-webkit-scrollbar below): a
+   6px thumb with 2px of air on both sides, no arrow buttons, the same on
+   every OS. The standard pair (scrollbar-width/-color) is for Firefox ONLY:
+   since Chrome 121 a set scrollbar-color — which is INHERITED, even into
+   shadow roots — makes Chrome ignore every ::-webkit-scrollbar rule and
+   paint its native bar (on Windows: arrow buttons, the thumb off-centre in
+   its track, "too much room on the right").
    -------------------------------------------------------------------------- */
-* {
-    scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb) transparent;
+@supports not selector(::-webkit-scrollbar) {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
 }
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }
@@ -327,7 +360,7 @@ sac-window {
     background: var(--scrollbar-thumb);
     background-clip: content-box;
     border: 2px solid transparent;
-    border-radius: var(--radius-s);
+    border-radius: 999px;   /* a pill — the one rounded exception to the shape scale */
 }
 *::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
@@ -338,18 +371,27 @@ sac-window {
 /* --------------------------------------------------------------------------
    6. Base
    -------------------------------------------------------------------------- */
-* { box-sizing: border-box; }
+/* `*` alone does NOT match pseudo-elements and box-sizing is not inherited, so
+   a bordered ::before/::after would otherwise size as content-box and mis-centre
+   (e.g. a dot on a connector line). Include the pseudo-elements — the standard
+   modern reset. */
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
     margin: 0;
     padding: 0;
     min-height: 100vh;
+    min-height: 100dvh;   /* mobile: the toolbar slides in and out; dvh follows it */
     background: var(--bg);
     color: var(--text);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    /* Mobile browsers flash a grey/blue box over anything tapped. Every kit
+       control draws its own press state, so the flash only adds noise.
+       Inherited — reaches into the shadow roots too. */
+    -webkit-tap-highlight-color: transparent;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -625,6 +667,59 @@ a.nav-icon-btn { text-decoration: none; }
    hover ring. Combines with .labeled (avatar + name in the pill). */
 .nav-icon-btn.avatar { --avatar-size: 26px; }
 
+/* Small ghost icon button for rows, lists and cards — the light-DOM twin of
+   <sac-copy-button>'s inner button. Both read --icon-btn-size/--icon-btn-icon,
+   so a delete button beside a copy button stays its twin across kit upgrades. */
+.icon-btn {
+    --icon-size: var(--icon-btn-icon);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: var(--icon-btn-size);
+    height: var(--icon-btn-size);
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-m);
+    background: transparent;
+    color: var(--text-dim);
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 120ms var(--ease-smooth), background 120ms var(--ease-smooth);
+}
+.icon-btn:hover:not(:disabled) {
+    background: var(--hover);
+    color: var(--text);
+}
+.icon-btn:active:not(:disabled) { background: var(--hover-strong); }
+.icon-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.icon-btn.danger:hover:not(:disabled) { color: var(--danger-text); }
+.icon-btn:disabled { opacity: 0.3; cursor: default; }
+.icon-btn[hidden] { display: none; }
+/* The tool-sized variant: <sac-toolbox>'s measure and states, for action
+   buttons that sit next to tools. It re-points the icon-btn tokens, so the
+   touch halo below computes from the right box too. */
+.icon-btn.tool {
+    --icon-btn-size: var(--tool-btn-size);
+    --icon-btn-icon: var(--tool-btn-icon);
+    color: var(--text-muted);
+}
+.icon-btn.tool.active,
+.icon-btn.tool[aria-pressed="true"] {
+    background: var(--accent-fill);
+    color: var(--on-accent);
+}
+.icon-btn svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+}
+@media (prefers-reduced-motion: reduce) {
+    .icon-btn { transition: none; }
+}
+
 /* --------------------------------------------------------------------------
    9. Panels, cards, menus, logs (CSS patterns — documented in the style guide)
    -------------------------------------------------------------------------- */
@@ -713,6 +808,8 @@ a.nav-icon-btn { text-decoration: none; }
     border-radius: var(--radius-m);
     border: 1px solid var(--border);
     font-family: monospace;
+    -webkit-user-select: text;
+    user-select: text;
 }
 
 /* Skeleton — shimmering placeholder block for content still loading. */
@@ -739,6 +836,19 @@ a.nav-icon-btn { text-decoration: none; }
 @keyframes skeleton-sweep {
     from { transform: translateX(-100%); }
     to   { transform: translateX(100%); }
+}
+
+/* Transparency checker — any surface that shows "nothing here" behind
+   pixels (a preview canvas, an alpha well). Token squares over whatever
+   ground the element has; --checker-size sets the square (default 8px).
+   Pair with image-rendering: pixelated on the canvas/img it backs. */
+.checker {
+    --checker-size: 8px;
+    background-image:
+        linear-gradient(45deg, var(--checker) 25%, transparent 25%, transparent 75%, var(--checker) 75%),
+        linear-gradient(45deg, var(--checker) 25%, transparent 25%, transparent 75%, var(--checker) 75%);
+    background-size: var(--checker-size) var(--checker-size);
+    background-position: 0 0, calc(var(--checker-size) / 2) calc(var(--checker-size) / 2);
 }
 
 /* --------------------------------------------------------------------------
@@ -938,7 +1048,7 @@ a.nav-icon-btn { text-decoration: none; }
     margin: 0 auto;
     /* 50px clears the fixed <sac-nav> — the same clearance .main-layout and
        #app-root carry; the 4rem on top is the hero's own breathing room. */
-    padding: calc(50px + 4rem) 2rem 2rem;
+    padding: calc(50px + env(safe-area-inset-top, 0px) + 4rem) 2rem 2rem;
 }
 /* Inside a container that already cleared the nav (#app-root, or the shell
    stage inside .main-layout) — take the 50px back so the two never stack. */
@@ -1060,7 +1170,7 @@ a.nav-icon-btn { text-decoration: none; }
     border-color: transparent;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-height: 480px) and (pointer: coarse) {
     .tile.large { grid-column: span 1; }
     .grid { grid-auto-rows: 240px; }
 }
@@ -1075,7 +1185,8 @@ a.nav-icon-btn { text-decoration: none; }
     display: flex;
     flex-direction: column;
     height: 100vh;
-    width: 100vw;
+    height: 100dvh;
+    width: 100%;          /* not 100vw: that includes the scrollbar and overflows */
     overflow: hidden;
     -webkit-user-select: none;
     user-select: none;
@@ -1094,7 +1205,8 @@ a.nav-icon-btn { text-decoration: none; }
     flex: 1;
     display: flex;
     overflow: hidden;
-    padding-top: 50px; /* room for the fixed 50px <sac-nav> */
+    /* room for the fixed 50px <sac-nav>, which grows by the notch inset */
+    padding-top: calc(50px + env(safe-area-inset-top, 0px));
 }
 
 .sidebar {
@@ -1109,6 +1221,11 @@ a.nav-icon-btn { text-decoration: none; }
     z-index: 90;
 }
 
+/* A .sidebar inside a sac-split panel (the resizable-sidebar recipe) hands
+   its width to the panel. On compact the drawer rule below wins (same
+   specificity, later) — no media query needed in the app. */
+.sidebar.fill { width: 100%; height: 100%; }
+
 .viewport {
     background: var(--viewport-bg);
     position: relative;
@@ -1116,6 +1233,8 @@ a.nav-icon-btn { text-decoration: none; }
     flex: 1;
     min-height: 400px;
 }
+/* Set by sac.setupPanZoom while a pan drag is in progress. */
+.viewport.grabbing { cursor: grabbing; }
 
 canvas {
     width: 100% !important;
@@ -1134,8 +1253,9 @@ canvas {
    13. App shell (SPA pattern) + centered card shell
    -------------------------------------------------------------------------- */
 #app-root {
-    padding-top: 50px; /* room for the fixed <sac-nav> */
+    padding-top: calc(50px + env(safe-area-inset-top, 0px)); /* room for the fixed <sac-nav> */
     min-height: 100vh;
+    min-height: 100dvh;
 }
 
 /* Shell stage (sac.apps kind:"view") — the FULL viewport. An app is
@@ -1146,6 +1266,7 @@ canvas {
 .app-stage {
     position: relative;
     height: 100vh;
+    height: 100dvh;
     min-width: 0;
     overflow: hidden;
 }
@@ -1154,7 +1275,7 @@ canvas {
 .sac-app-view { display: block; height: 100%; }
 .sac-app-view[hidden] { display: none; }
 /* Inside an app element, .main-layout gets its height from the view (in a
-   tool PAGE it is a flex child of .workspace instead — both end at 100vh). */
+   tool PAGE it is a flex child of .workspace instead — both end at 100dvh). */
 .sac-app-view .main-layout { height: 100%; }
 /* The host's home section scrolls itself; its own fixed nav sits above. */
 .app-home { height: 100%; overflow-y: auto; }
@@ -1165,10 +1286,16 @@ canvas {
     min-width: 0;
     overflow-y: auto;
     position: relative;
+    /* Content is text people copy — .app-page switched selection off for the
+       chrome, this region switches it back on. */
+    -webkit-user-select: text;
+    user-select: text;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .center-shell {
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1215,4 +1342,173 @@ canvas {
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
     }
+}
+
+/* --------------------------------------------------------------------------
+   15. RESPONSIVE — phones and small tablets.
+   An app built only from the kit works on a 360px portrait phone without a
+   media query of its own. Desktop (>= 1024px) is untouched by everything below.
+
+   Breakpoints — fixed values, not tokens (custom properties cannot be used
+   inside a media query), so they are written out and documented here:
+     compact  (max-width: 768px),              page layout: the rail becomes a
+              (max-height: 480px) and          drawer, paddings shrink, sac-dialog
+              (pointer: coarse)                becomes a sheet, sac-window opens
+                                               maximized. The second half is a
+                                               phone held sideways (844 x 390):
+                                               wide, but far too short for the
+                                               desktop layout. Copy the whole
+                                               query when you need "compact".
+     narrow   (max-width: 480px)  a second step, ONLY where a component truly
+                                  needs one.
+
+   Who reacts to what:
+   - PAGE layout (.main-layout, the rail, sac-nav, dialogs, windows) reacts to
+     @media — the page is its container.
+   - COMPONENTS react to their OWN container (container-type: inline-size +
+     @container), because they also live in sac-windows and sac-split panels
+     that are narrow on a wide screen. Put the container on an inner wrapper
+     or on a block-level host only: inline-size containment stops an element
+     from sizing to its content, so a shrink-to-fit host would collapse to 0.
+   - Shadow components carry their own queries: a light-DOM @media rule does
+     not pierce a shadow root (same caveat as reduced motion, section 14).
+
+   Input capability, not width:
+   - (pointer: coarse) — every control gets a 44 x 44px hit area (not always
+     a 44px look) and text fields get 16px type, which stops iOS zooming the
+     page on focus.
+   - (hover: none) — nothing may be reachable by hover alone. Anything that is
+     only REVEALED on hover (the .hover-reveal utility below) is shown for good.
+   -------------------------------------------------------------------------- */
+:root {
+    /* The off-canvas drawer's width — the rail on compact, and the sac-nav
+       burger panel beside it. */
+    --drawer-width: min(300px, 85vw);
+}
+
+/* Hover-reveal utility: row actions, copy buttons and other secondary icons
+   that stay quiet until the row is pointed at or focused.
+     <li class="reveal-on-hover">Title <button class="icon-btn hover-reveal">…</button></li>
+   On a touch screen there is no hover, so they are simply always shown. */
+.reveal-on-hover .hover-reveal {
+    opacity: 0;
+    transition: opacity 120ms var(--ease-smooth);
+}
+.reveal-on-hover:hover .hover-reveal,
+.reveal-on-hover:focus-within .hover-reveal { opacity: 1; }
+
+/* sac-nav's toolbar overflow parks the buttons that do not fit behind its
+   "…" menu by marking them. Light DOM, so the rule lives here. */
+[data-sac-overflow] { display: none !important; }
+
+@media (hover: none) {
+    .reveal-on-hover .hover-reveal { opacity: 1; }
+    /* A tap leaves :hover stuck on the tapped element until the next tap
+       elsewhere — a lifted tile or a raised button must not stay raised. */
+    .tile:hover { transform: translateZ(0); box-shadow: none; border-color: var(--border-strong); background: var(--tile); }
+    .tile:hover > sac-icon { transform: none; }
+    .btn.primary:hover:not(:disabled) { transform: none; box-shadow: none; }
+    .nav-icon-btn:hover { transform: none; }
+}
+
+@media (pointer: coarse) {
+    :root { --tool-btn-size: 44px; }
+    .btn { min-height: 44px; }
+    /* In a toolbar/ribbon the button keeps its 32px look — a 44px fill
+       would crowd the 50px ribbon — and an invisible halo takes the hit
+       area to 44px instead. */
+    .toolbar .btn { min-height: 0; position: relative; }
+    .toolbar .btn::after {
+        content: "";
+        position: absolute;
+        inset: -6px 0;
+    }
+    .nav-icon-btn { width: 44px; height: 44px; }
+    .nav-icon-btn.labeled { width: auto; }
+    /* The small icon button keeps its 26px look; an invisible halo takes
+       the hit area to 44px. */
+    .icon-btn { position: relative; }
+    .icon-btn::after {
+        content: "";
+        position: absolute;
+        inset: calc((var(--icon-btn-size) - 44px) / 2);
+    }
+    .pagination button,
+    .pagination a,
+    .pagination .gap { min-width: 44px; height: 44px; }
+    /* max(16px, 1rem): below 16px iOS zooms the page when the field focuses. */
+    input, textarea, select { font-size: max(16px, 1rem); }
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+    select { min-height: 44px; }
+    input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
+}
+
+@media (max-width: 768px), (max-height: 480px) and (pointer: coarse) {
+    /* Paddings sized for a phone, not a monitor. */
+    .hub-container { padding: calc(50px + env(safe-area-inset-top, 0px) + 2rem) 1rem 1.5rem; }
+    #app-root .hub-container,
+    .main-layout .hub-container { padding-top: 2rem; }
+    .hub-container header { margin-bottom: 2rem; }
+    .grid {
+        grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+        /* A 240px tile in a single column is mostly empty space. */
+        grid-auto-rows: minmax(150px, auto);
+        gap: 1rem;
+    }
+    .tile { padding: 1.5rem; }
+    .card { padding: 1rem; }
+    .center-shell {
+        padding: 1rem;
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    }
+    .center-card { padding: 2rem 1.25rem; }
+    .viewport { min-height: 240px; }
+
+    /* The rail as an off-canvas drawer. [drawer] is set by the sac-nav that
+       adopts the rail (its burger opens it), [open] while it is out. A rail
+       with no nav to open it keeps its inline place — a drawer nobody can
+       open would be worse than a narrow rail. */
+    .sidebar[drawer] {
+        position: fixed;
+        top: var(--drawer-top, calc(50px + env(safe-area-inset-top, 0px)));
+        bottom: 0;
+        left: 0;
+        width: var(--drawer-width);
+        height: auto;   /* beats .sidebar.fill: top + bottom size the drawer */
+        /* Above every floating window (10000–18999) and the open nav
+           (19000), under dialogs (20000). */
+        z-index: 19001;
+        padding-left: calc(0.75rem + env(safe-area-inset-left, 0px));
+        padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+        translate: -105% 0;
+        visibility: hidden;
+        transition: translate 0.5s var(--ease-swift), visibility 0.5s;
+    }
+    /* translate: none while open, not 0 — any transform makes the drawer the
+       containing block of its position:fixed descendants (popovers). */
+    .sidebar[drawer][open] {
+        translate: none;
+        visibility: visible;
+    }
+}
+
+/* Narrow phones: a tile becomes a ROW — icon beside the text instead of
+   above it. The column tile spends most of its height on the 48px mark;
+   as a row the launcher shows twice the tiles per screen. */
+@media (max-width: 480px) {
+    .grid { grid-auto-rows: auto; gap: 0.75rem; }
+    .tile {
+        flex-direction: row;
+        align-items: flex-start;
+        justify-content: flex-start;
+        gap: 1rem;
+        padding: 1rem 1.25rem;
+    }
+    .tile > sac-icon {
+        --icon-size: 32px;
+        margin-bottom: 0;
+        flex: none;
+    }
+    .tile h2 { font-size: 1.15rem; }
+    .hub-container .intro-text { font-size: 1rem; }
 }

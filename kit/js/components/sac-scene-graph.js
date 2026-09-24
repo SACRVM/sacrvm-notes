@@ -31,6 +31,13 @@
  *   sac:expand     — detail.expanded.
  *   sac:delete
  *   sac:recolor    — detail.color.
+ *
+ * Compact/touch: under (pointer: coarse) every row is 44px tall and each
+ * control (chevron, eye, color well, trash) is a 44 x 44px target with the
+ * same small glyph — real boxes, not overlapping halos, because the controls
+ * sit side by side. Every action is always visible (none is hover-revealed);
+ * under (hover: none) the sticky hover tint and the color well's hover zoom
+ * are switched off so a tapped row does not stay lit.
  */
 (function () {
 
@@ -232,6 +239,33 @@ class SacSceneItem extends HTMLElement {
                     transform: scale(1.2);
                     border-color: var(--text);
                 }
+                /* The color input's hit box. Invisible on a mouse (contents),
+                   the 44px target on touch. A <label> so a tap anywhere on it
+                   opens the picker. */
+                .well { display: contents; }
+                .spacer { width: 12px; }
+                @media (pointer: coarse) {
+                    .item-row { min-height: 44px; padding: 0 4px; gap: 0; }
+                    button.icon, .well, .spacer {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        width: 44px;
+                        height: 44px;
+                        flex: none;
+                    }
+                    button.icon svg { width: 16px; height: 16px; }
+                    .label { padding: 0 4px; }
+                    input[type="color"] { width: 20px; height: 20px; }
+                }
+                @media (hover: none) {
+                    /* A tap leaves :hover stuck until the next tap elsewhere. */
+                    .item-row:not(.active):hover { background: none; }
+                    input[type="color"]:hover {
+                        transform: none;
+                        border-color: color-mix(in srgb, var(--fg) 40%, transparent);
+                    }
+                }
                 @media (prefers-reduced-motion: reduce) {
                     .item-row, .icon, .chevron, input[type="color"] { transition: none; }
                 }
@@ -245,7 +279,7 @@ class SacSceneItem extends HTMLElement {
                     <button type="button" class="chevron icon" id="btn-expand" aria-label="${escText(L.expand)}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                     </button>
-                ` : '<div style="width: 12px;"></div>'}
+                ` : '<div class="spacer"></div>'}
 
                 <button type="button" class="icon" id="btn-visibility" aria-label="${escText(L.visible)}" aria-pressed="${this.visible ? 'true' : 'false'}">
                     ${this.visible ? EYE_OPEN : EYE_CLOSED}
@@ -253,7 +287,7 @@ class SacSceneItem extends HTMLElement {
 
                 <div class="label" id="item-label">${escText(label)}</div>
 
-                ${color ? `<input type="color" value="${safeColor}" id="item-color" aria-label="${escText(L.colorL)}">` : ''}
+                ${color ? `<label class="well"><input type="color" value="${safeColor}" id="item-color" aria-label="${escText(L.colorL)}"></label>` : ''}
 
                 ${canDelete ? `
                     <button type="button" class="icon" id="btn-delete" aria-label="${escText(L.del)}" style="opacity: 0.4">
@@ -299,8 +333,9 @@ class SacSceneItem extends HTMLElement {
                 this.dispatchEvent(new CustomEvent('sac:expand', { detail: { id: this.id, expanded: this.expanded }, bubbles: true, composed: true }));
             } else if (path.some(el => el.id === 'btn-delete')) {
                 this.dispatchEvent(new CustomEvent('sac:delete', { detail: { id: this.id }, bubbles: true, composed: true }));
-            } else if (path.some(el => el.id === 'item-color')) {
-                // Color change handled by onchange below.
+            } else if (path.some(el => el.id === 'item-color' || (el.classList && el.classList.contains('well')))) {
+                // Color change handled by onchange below. A tap on the well's
+                // margin reaches the label first — not a row select either.
             } else {
                 // Modifier hints so a host can build multi-selections without
                 // re-implementing hit detection: `additive` = toggle one

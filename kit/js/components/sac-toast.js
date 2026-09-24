@@ -46,6 +46,19 @@
  *     toast strings routinely come from errors, files and users.
  *   - The stack itself is pointer-events: none and stays in the DOM; only the
  *     cards are interactive.
+ *
+ * Compact/touch:
+ *   - On a compact viewport (ui.css §15) every stack, whatever its
+ *     `position`, sits at the BOTTOM edge, full width minus an 8px gutter,
+ *     above env(safe-area-inset-bottom) (the home indicator); newest card
+ *     nearest the bottom. Cards slide up instead of sideways.
+ *   - The hover pause has a touch twin: a finger ON a toast holds its timer,
+ *     lifting it restarts the full duration (pointerdown / pointerup, for
+ *     touch and pen; the mouse keeps enter/leave).
+ *   - Swipe a toast sideways (past ~80px) to dismiss it; a shorter drag
+ *     snaps back. Vertical drags still scroll the page.
+ *   - Under (pointer: coarse) the close button keeps its 20px look with a
+ *     44px hit area.
  */
 (function () {
 
@@ -117,8 +130,17 @@ class SacToastStack extends HTMLElement {
         card._timer = null;
         card.dismiss = () => this._dismiss(card);
 
-        card.addEventListener("mouseenter", () => this._clearTimer(card));
-        card.addEventListener("mouseleave", () => this._startTimer(card));
+        // Pause while pointed at (mouse) or held (touch, pen). Pointer events
+        // filtered by type, not mouseenter: a tap fires compat mouseenter
+        // with no mouseleave until the next tap elsewhere — the toast would
+        // stay paused forever after a touch.
+        card.addEventListener("pointerenter", (e) => {
+            if (e.pointerType === "mouse") this._clearTimer(card);
+        });
+        card.addEventListener("pointerleave", (e) => {
+            if (e.pointerType === "mouse") this._startTimer(card);
+        });
+        this._bindTouch(card);
 
         region.appendChild(card);
         this._startTimer(card);
@@ -137,6 +159,54 @@ class SacToastStack extends HTMLElement {
             clearTimeout(card._timer);
             card._timer = null;
         }
+    }
+
+    /**
+     * Touch and pen: hold = pause, release = full duration again, and a
+     * sideways swipe dismisses. touch-action: pan-y (CSS) keeps vertical
+     * drags for page scrolling and hands horizontal ones to us.
+     */
+    _bindTouch(card) {
+        let drag = null;                  // { id, x, dx } while a finger is down
+        const release = (e) => {
+            if (!drag || e.pointerId !== drag.id) return;
+            const dx = drag.dx;
+            drag = null;
+            card.style.transition = "";
+            if (Math.abs(dx) > 80) { this._swipeAway(card, dx); return; }
+            card.style.translate = "";
+            this._startTimer(card);
+        };
+        card.addEventListener("pointerdown", (e) => {
+            if (e.pointerType === "mouse" || card._leaving) return;
+            this._clearTimer(card);
+            drag = { id: e.pointerId, x: e.clientX, dx: 0 };
+        });
+        card.addEventListener("pointermove", (e) => {
+            if (!drag || e.pointerId !== drag.id) return;
+            drag.dx = e.clientX - drag.x;
+            // A small dead zone: a tap on the close button must stay a tap.
+            if (Math.abs(drag.dx) < 10) return;
+            if (!card.hasPointerCapture(e.pointerId)) card.setPointerCapture(e.pointerId);
+            // `translate`, not `transform`: the entry animation holds
+            // transform (and opacity) with fill-mode forwards, and an
+            // animated property ignores inline styles. translate composes
+            // on top of it instead.
+            card.style.transition = "none";
+            card.style.translate = `${drag.dx}px 0`;
+        });
+        card.addEventListener("pointerup", release);
+        card.addEventListener("pointercancel", release);
+    }
+
+    /** Swipe exit: carry on in the swipe's direction, then remove. */
+    _swipeAway(card, dx) {
+        if (card._leaving) return;
+        card._leaving = true;
+        this._clearTimer(card);
+        card.classList.add("swiped");
+        card.style.translate = `${dx > 0 ? "" : "-"}110% 0`;
+        setTimeout(() => card.remove(), 200);
     }
 
     _dismiss(card) {
@@ -297,6 +367,56 @@ class SacToastStack extends HTMLElement {
                     to   { opacity: 0; transform: translateX(var(--slide-from)); }
                 }
 
+                .toast.swiped {
+                    transition: translate 0.18s var(--ease-smooth);
+                }
+
+                /* Compact: one bottom-anchored, full-width stack whatever the
+                   position attribute says — a corner card on a phone is most
+                   of the width anyway, and the thumb lives at the bottom. The
+                   8px gutter and the home-indicator inset keep it off the
+                   edges. Newest nearest the bottom edge, as in any bottom
+                   stack. */
+                @media (max-width: 768px), (max-height: 480px) and (pointer: coarse) {
+                    :host,
+                    :host([position]) {
+                        top: auto;
+                        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+                        left: calc(8px + env(safe-area-inset-left, 0px));
+                        right: calc(8px + env(safe-area-inset-right, 0px));
+                    }
+                    .region,
+                    :host([position]) .region {
+                        flex-direction: column;
+                        align-items: stretch;
+                    }
+                    .toast {
+                        min-width: 0;
+                        max-width: none;
+                    }
+                    @keyframes toast-in {
+                        from { opacity: 0; transform: translateY(20px); }
+                        to   { opacity: 1; transform: translateY(0); }
+                    }
+                    @keyframes toast-out {
+                        from { opacity: 1; transform: translateY(0); }
+                        to   { opacity: 0; transform: translateY(20px); }
+                    }
+                }
+
+                /* Touch: horizontal drags are ours (swipe to dismiss),
+                   vertical ones still scroll. The close button keeps its
+                   20px look; an invisible halo makes the hit area 44px. */
+                @media (pointer: coarse) {
+                    .toast { touch-action: pan-y; }
+                    .close { position: relative; }
+                    .close::after {
+                        content: "";
+                        position: absolute;
+                        inset: -12px;
+                    }
+                }
+
                 /* Motion is decoration here — the message and the dismissal
                    timing are unaffected. */
                 @media (prefers-reduced-motion: reduce) {
@@ -307,6 +427,7 @@ class SacToastStack extends HTMLElement {
                         transform: none;
                     }
                     .toast.out { opacity: 0; }
+                    .toast.swiped { transition: none; }
                     .close { transition: none; }
                 }
             </style>

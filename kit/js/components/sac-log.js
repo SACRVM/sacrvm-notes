@@ -12,6 +12,14 @@
  * add() APPENDS one node — it never rebuilds the list, so only the new entry
  * plays the slide-in and existing rows don't flicker. Entry text is written
  * with textContent; log strings routinely come from errors and user input.
+ *
+ * Compact/touch: entry text is always selectable (user-select: text — the
+ * kit's app shells switch selection off, and copying a log line off a phone
+ * is the point). Under (pointer: coarse) the Copy/Clear header buttons are
+ * 44px targets (the header grows to 44px rather than halos spilling onto the
+ * first entry). The body is its own container: below 480px of its own width
+ * long unbroken strings (URLs, stack paths) wrap instead of scrolling
+ * sideways.
  */
 (function () {
 
@@ -114,6 +122,21 @@ class SacLog extends HTMLElement {
                     overflow-y: auto;
                     padding: 0.5rem 0.75rem;
                     color: color-mix(in srgb, var(--fg) 78%, var(--bg));
+                    /* user-select is inherited through the shadow boundary,
+                       so a shell's "none" would make the log uncopyable. */
+                    -webkit-user-select: text;
+                    user-select: text;
+                    container-type: inline-size;
+                }
+                @container (max-width: 480px) {
+                    .entry { overflow-wrap: anywhere; }
+                }
+                @media (pointer: coarse) {
+                    .hdr { align-items: center; padding-top: 0; padding-bottom: 0; }
+                    .hdr button { min-height: 44px; min-width: 44px; padding: 0 0.6rem; }
+                }
+                @media (hover: none) {
+                    .hdr button:hover { color: color-mix(in srgb, var(--fg) 78%, var(--bg)); background: none; }
                 }
                 .entry {
                     padding: 0.2rem 0;
@@ -137,7 +160,7 @@ class SacLog extends HTMLElement {
                 .body::-webkit-scrollbar-track { background: transparent; }
                 .body::-webkit-scrollbar-thumb {
                     background: var(--scrollbar-thumb);
-                    border-radius: var(--radius-s);
+                    border-radius: 999px;
                 }
             </style>
             <div class="hdr">

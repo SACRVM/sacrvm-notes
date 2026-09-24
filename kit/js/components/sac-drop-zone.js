@@ -23,6 +23,11 @@
  *   label    — the main line. Default "Drop files here".
  *   hint     — the dim second line. Default "or click to browse";
  *              `hint=""` hides the line entirely (same for `label=""`).
+ *   touch-label / touch-hint — the two lines on a touch-only device
+ *              ((hover: none) and (pointer: coarse)), where nothing can be
+ *              dragged in from the OS. Defaults "Choose files" / "Tap to
+ *              browse" — used only when the matching label/hint is not set;
+ *              an app that sets `label` should set `touch-label` too.
  *   disabled — dims the surface and blocks click, keyboard AND drop. A drag
  *              over a disabled zone is not accepted, so the browser shows the
  *              "no drop" cursor rather than a lie.
@@ -43,6 +48,12 @@
  *                  filtered out every dropped file. Whether that deserves a
  *                  toast is the app's call, not the kit's.
  *
+ * Compact/touch: phones have no OS drag-and-drop, so the zone is a tap target
+ * first — the whole surface (140px min) opens the picker, the touch wording
+ * above replaces "drop/click", a press shows the wash, and no hover wash is
+ * left behind. It follows a live switch between touch and mouse. Drops keep
+ * working wherever the platform supports them.
+ *
  * CSS custom properties:
  *   --drop-zone-min-height — height of the surface. Default 140px.
  *
@@ -61,7 +72,7 @@
 
 class SacDropZone extends HTMLElement {
     static get observedAttributes() {
-        return ["accept", "multiple", "label", "hint", "disabled"];
+        return ["accept", "multiple", "label", "hint", "touch-label", "touch-hint", "disabled"];
     }
 
     constructor() {
@@ -73,6 +84,7 @@ class SacDropZone extends HTMLElement {
         // "left a child" from "left the zone".
         this._depth = 0;
         this._onWindowDragEnd = this._onWindowDragEnd.bind(this);
+        this._onTouchChange = () => { if (this._label) this._sync(); };
     }
 
     connectedCallback() {
@@ -85,6 +97,8 @@ class SacDropZone extends HTMLElement {
         // dragleave — these are the safety nets.
         window.addEventListener("dragend", this._onWindowDragEnd);
         window.addEventListener("drop", this._onWindowDragEnd);
+        // A convertible flips between touch and mouse — follow it.
+        SacDropZone.TOUCH.addEventListener("change", this._onTouchChange);
 
         this._sync();
     }
@@ -92,6 +106,7 @@ class SacDropZone extends HTMLElement {
     disconnectedCallback() {
         window.removeEventListener("dragend", this._onWindowDragEnd);
         window.removeEventListener("drop", this._onWindowDragEnd);
+        SacDropZone.TOUCH.removeEventListener("change", this._onTouchChange);
         this._clearOver();
     }
 
@@ -140,10 +155,23 @@ class SacDropZone extends HTMLElement {
     _sync() {
         const disabled = this.hasAttribute("disabled");
 
-        const label = this.getAttribute("label");
-        const hint  = this.getAttribute("hint");
-        const labelText = label == null ? t("drop-zone.label", SacDropZone.DEFAULT_LABEL) : label;
-        const hintText  = hint  == null ? t("drop-zone.hint",  SacDropZone.DEFAULT_HINT)  : hint;
+        // On a touch-only device there is no file to drag in from the OS, so
+        // "Drop files here / or click to browse" describes a gesture nobody
+        // can make. The tap-to-browse wording takes over — touch-label /
+        // touch-hint when the app set them, else the kit's touch defaults.
+        // An app's own label/hint with no touch-* twin is kept as written.
+        const touch = SacDropZone.TOUCH.matches;
+        const pick = (name, key, fallback) => {
+            if (touch) {
+                const tv = this.getAttribute("touch-" + name);
+                if (tv != null) return tv;
+                if (this.getAttribute(name) == null) return t(key + "-touch", SacDropZone["TOUCH_" + name.toUpperCase()]);
+            }
+            const v = this.getAttribute(name);
+            return v == null ? t(key, fallback) : v;
+        };
+        const labelText = pick("label", "drop-zone.label", SacDropZone.DEFAULT_LABEL);
+        const hintText  = pick("hint",  "drop-zone.hint",  SacDropZone.DEFAULT_HINT);
 
         this._label.textContent = labelText;
         this._hint.textContent  = hintText;
@@ -391,6 +419,16 @@ class SacDropZone extends HTMLElement {
                 :host([over]:not([disabled])) .icon,
                 :host([over]:not([disabled])) .label { color: var(--accent); }
 
+                /* Touch: no hover wash stuck after the tap that opened the
+                   picker; the press itself gives the feedback instead. */
+                @media (hover: none) {
+                    :host(:not([disabled]):hover) .zone { background: var(--glass); }
+                    :host(:not([disabled]):hover) .icon { color: var(--text-dim); }
+                    :host(:not([disabled]):active) .zone {
+                        background: linear-gradient(var(--hover), var(--hover)), var(--glass);
+                    }
+                }
+
                 /* Never seen, never focused — only clicked, by us. */
                 #picker { display: none; }
 
@@ -436,6 +474,12 @@ class SacDropZone extends HTMLElement {
 
 SacDropZone.DEFAULT_LABEL = "Drop files here";
 SacDropZone.DEFAULT_HINT  = "or click to browse";
+SacDropZone.TOUCH_LABEL   = "Choose files";
+SacDropZone.TOUCH_HINT    = "Tap to browse";
+/* Touch-only: no fine pointer and no hover anywhere — a phone or tablet
+   without a mouse. A laptop with a touchscreen still has its mouse, so it
+   keeps the drop wording. */
+SacDropZone.TOUCH = matchMedia("(hover: none) and (pointer: coarse)");
 
 customElements.define("sac-drop-zone", SacDropZone);
 })();

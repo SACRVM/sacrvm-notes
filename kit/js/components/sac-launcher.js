@@ -57,7 +57,9 @@
  *   `tile` ("medium" default | "wide" spans 2 grid columns | "large" spans
  *   2 columns AND 2 rows; unknown values fall back to medium silently). All
  *   footprints collapse to medium on narrow viewports (≤768px), matching
- *   the .grid pattern. In edit mode each tile grows keyboard-reachable
+ *   the .grid pattern — and whenever the grid itself is too narrow for two
+ *   columns (a launcher inside a sac-window or split panel on a wide
+ *   screen), via a container query on the grid. In edit mode each tile grows keyboard-reachable
  *   controls: move left / move right / hide (or show, on grayed hidden
  *   tiles) and — for custom apps only — remove; the badge hides while
  *   editing so the controls own the corner. Built-in (host-registered)
@@ -65,6 +67,16 @@
  *   A dashed "Add app" tile opens a <sac-dialog> form: name, icon, tag,
  *   script URL, width, height. The form stays lean by design — user-added
  *   apps are always medium tiles with no badge.
+ *
+ * Compact/touch: the grid goes single-column below ~584px of its own width
+ * (the .grid pattern's 280px minimum), wide/large tiles included — a span-2
+ * cell in a one-column grid would otherwise add a phantom column and scroll
+ * the page sideways. Under (pointer: coarse) the edit controls grow from 28px
+ * to a 36px look with a 44px hit halo (gap 8px, so neighbouring halos just
+ * touch and never overlap). Under (hover: none) the Add tile's hover tint is
+ * off (a tap would leave it stuck). The launcher never positions the windows
+ * it opens — sac.apps creates them and sac-window maximizes itself on
+ * compact.
  *
  * Portability note: the "Add app" script URL may be a full cross-origin URL —
  * sac.apps injects it as a classic <script> tag, and classic script tags need
@@ -747,6 +759,12 @@ class SacLauncher extends HTMLElement {
             sac-launcher { display: block; }
 
             sac-launcher .sac-launcher-cell { position: relative; }
+
+            /* The grid is its own container: the footprint collapse below
+               must follow the width the grid actually has, not the page's.
+               On the grid (a full-width block), never on the host — see the
+               responsive notes in ui.css section 15. */
+            sac-launcher > .grid { container: sac-launcher-grid / inline-size; }
             sac-launcher .sac-launcher-cell > .tile { width: 100%; height: 100%; }
 
             /* Manifest-declared footprint (tile: "wide" | "large"). Spans sit
@@ -756,9 +774,18 @@ class SacLauncher extends HTMLElement {
             sac-launcher .sac-launcher-cell.size-wide,
             sac-launcher .sac-launcher-cell.size-large { grid-column: span 2; }
             sac-launcher .sac-launcher-cell.size-large { grid-row: span 2; }
-            @media (max-width: 768px) {
+            @media (max-width: 768px), (max-height: 480px) and (pointer: coarse) {
                 /* Narrow viewports: every footprint collapses to medium,
                    matching the .grid pattern's own .tile.large collapse. */
+                sac-launcher .sac-launcher-cell.size-wide,
+                sac-launcher .sac-launcher-cell.size-large {
+                    grid-column: span 1;
+                    grid-row: span 1;
+                }
+            }
+            /* Two 280px columns + the 1.5rem gap: below that the grid has one
+               column and a span-2 cell would invent a second one. */
+            @container sac-launcher-grid (max-width: 583px) {
                 sac-launcher .sac-launcher-cell.size-wide,
                 sac-launcher .sac-launcher-cell.size-large {
                     grid-column: span 1;
@@ -833,6 +860,22 @@ class SacLauncher extends HTMLElement {
             }
             sac-launcher .sac-launcher-ctrl:disabled { opacity: 0.3; cursor: not-allowed; }
             sac-launcher .sac-launcher-ctrl[hidden] { display: none; }
+            @media (pointer: coarse) {
+                sac-launcher .sac-launcher-controls { gap: 8px; }
+                sac-launcher .sac-launcher-ctrl {
+                    position: relative;
+                    width: 36px;
+                    height: 36px;
+                    --icon-size: 16px;
+                }
+                /* 36px look + a halo 4px past each edge = 44px target (the
+                   inset counts from the padding box, inside the 1px border). */
+                sac-launcher .sac-launcher-ctrl::after {
+                    content: "";
+                    position: absolute;
+                    inset: -5px;
+                }
+            }
 
             /* The dashed "Add app" tile (edit mode only). */
             sac-launcher .sac-launcher-add-cell { display: none; }
@@ -862,6 +905,14 @@ class SacLauncher extends HTMLElement {
             sac-launcher .sac-launcher-add:hover sac-icon {
                 transform: none;
                 color: var(--accent);
+            }
+            @media (hover: none) {
+                sac-launcher .sac-launcher-add:hover {
+                    background: transparent;
+                    border-color: var(--border-strong);
+                    color: var(--text-muted);
+                }
+                sac-launcher .sac-launcher-add:hover sac-icon { color: var(--text-muted); }
             }
 
             /* Footer: the unobtrusive Edit toggle. */

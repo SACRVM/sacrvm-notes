@@ -39,7 +39,7 @@
  *
  * CSS custom properties:
  *   --picker-width — width of the whole stack. Default 240px; the layout is
- *           sound from 200px to 360px.
+ *           sound from 200px to 360px. Never wider than its container.
  *
  * Keyboard:
  *   SV thumb    — arrows move saturation/value by 1%, Shift by 5%,
@@ -58,12 +58,22 @@
  *     the only raw colors in the file, each marked, all carried by private
  *     custom properties (--h, --c, --ca) that JS updates in place. Every piece
  *     of chrome around them is tokens.
- *   - The transparency checker is derived from --fg, so it adapts to light and
+ *   - The transparency checker is the --checker token, so it adapts to light and
  *     dark instead of being a baked-in gray.
  *   - Whatever the user is currently typing in is never overwritten by a sync
  *     (the guard is shadowRoot.activeElement), so a half-typed hex survives a
  *     simultaneous change from anywhere else.
  *   - Requires kit/js/lib/color.js.
+ *
+ * Compact/touch:
+ *   The picker caps itself at 100% of its container (max-width), so it never
+ *   overflows a 360px phone or a narrow popover. Under (pointer: coarse) the
+ *   hue/alpha strips grow to 24px with an invisible halo making each a 44px
+ *   target (the stack gap widens so the halos meet, never overlap), the RGB
+ *   sliders get a 44px tall hit box around the same 4px track, and the
+ *   number/hex fields are 44px tall with 16px type (no iOS focus zoom).
+ *   Every surface is a pointer-captured drag with touch-action: none, so a
+ *   finger drag never scrolls the page. Nothing is hover-only.
  */
 (function () {
 
@@ -482,11 +492,10 @@
                 <style>
                     :host {
                         --picker-width: 240px;
-                        /* Transparency checker, derived so it adapts to any
-                           theme instead of being a baked-in gray. */
-                        --checker: color-mix(in srgb, var(--fg) 10%, transparent);
                         display: inline-block;
                         width: var(--picker-width);
+                        max-width: 100%;          /* shrink before the page scrolls */
+                        box-sizing: border-box;
                         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
                         color: var(--text);
                         -webkit-user-select: none;
@@ -736,6 +745,40 @@
                        glows accent while it is telling you it is unreadable. */
                     .hex.invalid:focus {
                         box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 10%, transparent);
+                    }
+
+                    /* Touch: 44px targets. Strips: 24px look + 10px halo above
+                       and below = 44px; the 20px stack gap lets neighbouring
+                       halos meet without overlapping. Range inputs: a 44px
+                       box whose background is clipped to the 4px content
+                       strip, so the track looks the same and the thumb stays
+                       centred on it. */
+                    @media (pointer: coarse) {
+                        .root { gap: 20px; }
+                        .strip { height: 24px; }
+                        .strip::after {
+                            content: "";
+                            position: absolute;
+                            inset: -10px 0;
+                        }
+                        .strip-thumb { width: 14px; height: 28px; }
+                        .rgb { gap: 0; }
+                        input[type="range"] {
+                            box-sizing: border-box;
+                            height: 44px;
+                            padding: 20px 0;
+                            background-clip: content-box;
+                        }
+                        input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; }
+                        input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; }
+                        .rgb-row { grid-template-columns: 12px minmax(0, 1fr) 56px; }
+                        input[type="number"],
+                        .hex {
+                            min-height: 44px;
+                            font-size: max(16px, 1rem);
+                        }
+                        .bottom { grid-template-columns: 44px minmax(0, 1fr); }
+                        .well { height: 44px; }
                     }
 
                     @media (prefers-reduced-motion: reduce) {

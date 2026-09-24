@@ -2,7 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- viewport-fit=cover: the page runs under a phone's notch and home bar;
+         the kit pads its nav, layouts and scroll regions by the safe-area
+         insets, so nothing important ends up behind them. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- Browser chrome colour (a phone's status bar / tab strip). These two
+         values mirror the --bg seeds in kit/css/ui.css (dark / light) — the
+         one place a seed is repeated, because a meta tag cannot read a custom
+         property. A custom theme updates them together with its seeds. -->
+    <meta name="theme-color" content="#0b0f1a" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)">
     <title>My Dialog App</title>
 
     <!-- The harness: your app alone, no desktop, F5 to develop.
@@ -29,7 +38,7 @@
 
     <style>
         /* Harness only — not part of the app. */
-        body { padding: 2rem; }
+        body { padding: clamp(1rem, 5vw, 2rem); }
         .frame {
             max-width: 420px;
             min-height: 360px;
@@ -39,7 +48,23 @@
             border: 1px solid var(--border);
             border-radius: var(--radius-l);
         }
-        .frame > * { flex: 1; }
+        /* height: auto lets the app stretch to the frame; its own
+           height: 100% is for the definite box a <sac-window> gives it. */
+        .frame > * { flex: 1; height: auto; }
+        /* On a phone a desktop opens every window maximized below its nav,
+           so the harness does the same: the frame becomes the whole screen.
+           Develop at 360px wide as well as at your manifest's size. */
+        @media (max-width: 768px), (max-height: 480px) and (pointer: coarse) {
+            body { padding: 0; }
+            .frame {
+                max-width: none;
+                min-height: 100vh;
+                min-height: 100dvh;
+                padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+                border: none;
+                border-radius: 0;
+            }
+        }
     </style>
 </head>
 <body>

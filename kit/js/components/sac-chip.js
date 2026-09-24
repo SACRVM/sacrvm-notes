@@ -22,6 +22,13 @@
  * Events:
  *   sac:remove — e.detail = { label } (only when [removable] is set),
  *                 bubbles + composed.
+ *
+ * Compact/touch: under (pointer: coarse) the × grows to 24px with a 44 x 44
+ * invisible hit halo (leaning right, away from the label), and a [clickable]
+ * chip gets a host halo to 44px tall — the pill itself keeps its look. Under
+ * (hover: none) the × is always shown at near-full strength and a tapped
+ * chip does not keep its hover wash. Give chips ~10px gap on touch so the
+ * halos do not overlap (sac-chip-input does).
  */
 (function () {
 
@@ -113,6 +120,49 @@ class SacChip extends HTMLElement {
                     background: color-mix(in srgb, var(--chip-color) 40%, transparent);
                 }
                 .x svg { width: 10px; height: 10px; }
+
+                /* Touch: the × is a 14px target — far too small for a finger.
+                   It grows to 24px and an invisible halo takes the hit area to
+                   44 x 44. The halo leans RIGHT (6px into the label, 14px past
+                   the chip's edge): the label side of a clickable chip is its
+                   own target, the right side is only a gap. z-index lifts the
+                   × over the clickable host's own halo below. */
+                @media (pointer: coarse) {
+                    :host([removable]) { padding-right: 4px; }
+                    .x {
+                        position: relative;
+                        z-index: 1;
+                        width: 24px;
+                        height: 24px;
+                        margin-right: 0;
+                    }
+                    .x svg { width: 12px; height: 12px; }
+                    .x::after {
+                        content: "";
+                        position: absolute;
+                        inset: -10px -14px -10px -6px;
+                    }
+                    /* A clickable chip is ~20px tall: a halo on the host takes
+                       it to 44px without changing the pill. min() — only the
+                       axis that is short grows. */
+                    :host([clickable]) { position: relative; }
+                    :host([clickable])::after {
+                        content: "";
+                        position: absolute;
+                        inset: min(0px, calc((100% - 44px) / 2));
+                    }
+                }
+                /* No hover on touch: a tapped chip must not keep the hover
+                   wash until the next tap elsewhere. The × is always fully
+                   visible there (opacity 0.6 is its resting look, not a hover
+                   reveal, so it stays reachable). */
+                @media (hover: none) {
+                    :host([clickable]:hover:not([selected])) {
+                        background: color-mix(in srgb, var(--chip-color) 18%, transparent);
+                        border-color: color-mix(in srgb, var(--chip-color) 35%, transparent);
+                    }
+                    .x { opacity: 0.85; }
+                }
             </style>
             <span class="label"></span>
             <button type="button" class="x" title="${L.remove}" aria-label="${L.remove}">

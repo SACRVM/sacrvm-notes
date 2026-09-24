@@ -16,7 +16,8 @@
  * attribute back moves the divider. Percent, not pixels, is what makes the
  * split survive a window resize with its proportions intact.
  *
- * The divider is a 1px hairline inside a ~9px invisible hit area — thin to
+ * The divider is a 1px hairline — the only pixel it takes from the layout —
+ * with a ~9px invisible hit area laid over the panels beside it — thin to
  * look at, comfortable to grab. It is focusable and fully keyboard-operable.
  *
  * Nesting works: put a vertical <sac-split> in the `end` slot of a horizontal
@@ -38,16 +39,49 @@
  *   dragging   — set BY THE COMPONENT while a drag is in progress, not by
  *                hand. Styling hook (`sac-split[dragging] …`).
  *
+ *   LIST/DETAIL ON A PHONE — one panel at a time:
+ *   collapse   — when the split's OWN width drops to this or below, it shows
+ *                one panel at a time: "compact" (768px — also the value of a
+ *                bare `collapse`), "narrow" (480px) or a px length ("600px").
+ *                The split measures itself, not the page, so it also
+ *                collapses inside a narrow sac-window on a wide screen.
+ *                Absent = never collapses (the pre-2.6 behaviour).
+ *   show       — "start" (default) | "end": which panel a collapsed split
+ *                shows. Set it to "end" when the user opens an item; the
+ *                built-in back bar sets it back to "start". Ignored while the
+ *                split is not collapsed. Nothing re-renders or moves: the
+ *                hidden panel keeps its scroll position, form state, canvas.
+ *   collapsed  — set BY THE COMPONENT while collapsed. Styling hook; the
+ *                divider is hidden.
+ *   rail-start — set BY THE COMPONENT when the start slot holds a rail that
+ *                sac-nav adopted (see the recipe below). While the page is
+ *                compact that rail IS a drawer, so the split collapses
+ *                whatever its width or `collapse` say — otherwise an empty
+ *                start panel would stand where the rail used to be (a phone
+ *                held sideways is 844px wide).
+ *   no-back    — hide the built-in back bar (draw your own and set `show`).
+ *   back-label — the back bar's text (default "Back", i18n key split.back).
+ *
  * Properties:
  *   position — get/set, normalized to one decimal ("34.2%"). Setting it does
  *              NOT fire sac:resize (the caller already knows); user
  *              interaction does.
+ *   show     — get/set "start" | "end" (the attribute).
+ *   collapsed — read-only boolean.
+ *
+ * Methods:
+ *   back() — what the back bar does: show "start" (after sac:split-back).
  *
  * Events:
  *   sac:resize — detail { position } (the percent string), bubbles +
  *              composed. Fired live during a drag, on every keyboard move, on
  *              a double-click reset, and when a container resize forces the
  *              position to change — but only when the value actually changed.
+ *   sac:split-back — the back bar was used (or back() called). Bubbles +
+ *              composed, CANCELABLE: preventDefault() keeps the end panel
+ *              (e.g. to confirm unsaved changes first).
+ *   sac:collapse — detail { collapsed } — the split entered or left the
+ *              one-panel mode. Bubbles + composed.
  *
  * Slots:
  *   start — left (horizontal) / top (vertical) panel.
@@ -84,11 +118,17 @@
  * The sidebar's own 260px width is handed over to the panel, hence width:100%:
  *
  *   <div class="main-layout">
- *       <sac-split style="flex:1" position="20%" min-start="180px" min-end="320px">
- *           <aside class="sidebar" slot="start" style="width:100%;height:100%">…</aside>
+ *       <sac-split style="flex:1" position="20%" min-start="180px" min-end="320px" collapse>
+ *           <aside class="sidebar fill" slot="start">…</aside>
  *           <section class="viewport" slot="end">…</section>
  *       </sac-split>
  *   </div>
+ *
+ * On a phone the page's <sac-nav> adopts the sidebar as its drawer; with
+ * `collapse` the split then gives the whole width to the viewport and leaves
+ * the drawer alone (the `rail-start` attribute, set by the split).
+ * `.sidebar.fill` (ui.css) hands the sidebar's width to the panel and
+ * yields to the drawer's own size on compact.
  *
  *   // Persist it — the attribute is already the truth:
  *   split.addEventListener("sac:resize", e => localStorage.setItem("sidebar", e.detail.position));
@@ -103,7 +143,7 @@
 
 class SacSplit extends HTMLElement {
     static get observedAttributes() {
-        return ["direction", "position", "min-start", "min-end", "aria-label"];
+        return ["direction", "position", "min-start", "min-end", "aria-label", "collapse", "back-label"];
     }
 
     constructor() {
@@ -117,6 +157,10 @@ class SacSplit extends HTMLElement {
         this._lastDown = -Infinity; // manual double-click detection, see _onPointerDown
         this._lastX    = 0;
         this._lastY    = 0;
+        // Page-level compact (ui.css §15): a drawer rail in the start slot
+        // collapses the split. Same query as sac-nav's.
+        this._compactMQ = window.matchMedia("(max-width: 768px), (max-height: 480px) and (pointer: coarse)");
+        this._onCompact = () => this._syncCollapse();
     }
 
     connectedCallback() {
@@ -125,14 +169,17 @@ class SacSplit extends HTMLElement {
         // Container resizes change what the px minimums mean in percent, so the
         // clamp has to re-run — otherwise a narrowed window leaves a sidebar
         // below its min-start.
-        this._ro = new ResizeObserver(() => this._reclamp());
+        this._ro = new ResizeObserver(() => { this._syncCollapse(); this._reclamp(); });
         this._ro.observe(this);
         this._syncLabel();
+        this._compactMQ.addEventListener("change", this._onCompact);
+        this._syncCollapse();
         this._set(this._current === null ? this._parse(this.getAttribute("position")) : this._current,
                   { emit: false, reflect: this.hasAttribute("position") });
     }
 
     disconnectedCallback() {
+        this._compactMQ.removeEventListener("change", this._onCompact);
         this._ro?.disconnect();
         this._ro = null;
         this._endDrag();
@@ -141,7 +188,8 @@ class SacSplit extends HTMLElement {
     attributeChangedCallback(name, oldValue, newValue) {
         if (!this.shadowRoot.firstChild) return;   // pre-upgrade attribute
         if (this._internal) return;                // our own write-back
-        if (name === "aria-label") { this._syncLabel(); return; }
+        if (name === "aria-label" || name === "back-label") { this._syncLabel(); return; }
+        if (name === "collapse") { this._syncCollapse(); return; }
         if (name === "position") {
             this._set(this._parse(newValue), { emit: false, reflect: this.hasAttribute("position") });
             return;
@@ -159,6 +207,16 @@ class SacSplit extends HTMLElement {
 
     set position(v) {
         this.setAttribute("position", String(v));
+    }
+
+    get show() { return this.getAttribute("show") === "end" ? "end" : "start"; }
+    set show(v) { this.setAttribute("show", v === "end" ? "end" : "start"); }
+
+    get collapsed() { return this.hasAttribute("collapsed"); }
+
+    back() {
+        const ev = new CustomEvent("sac:split-back", { bubbles: true, composed: true, cancelable: true });
+        if (this.dispatchEvent(ev)) this.show = "start";
     }
 
     /* ------------------------------------------------------------ internals */
@@ -210,7 +268,9 @@ class SacSplit extends HTMLElement {
      * each pointermove).
      */
     _set(pct, { emit = false, reflect = true, available } = {}) {
-        const size = available === undefined ? this._measure() : available;
+        // Collapsed: no geometry to clamp against — keep the value as given.
+        const size = this.hasAttribute("collapsed") ? 0
+            : available === undefined ? this._measure() : available;
         const [lo, hi] = this._bounds(size);
         // Upper bound first, lower bound last: when the container is too small
         // for both minimums, min-start wins.
@@ -230,7 +290,7 @@ class SacSplit extends HTMLElement {
 
         // The divider is a real flex item, so the start panel gets its share of
         // the space MINUS the divider — which is exactly what `position` means.
-        this._start.style.flexBasis = `calc((100% - var(--split-divider)) * ${p / 100})`;
+        this._start.style.flexBasis = `calc((100% - 1px) * ${p / 100})`;
         this._syncAria(p, lo, hi);
 
         if (changed && emit) {
@@ -243,7 +303,9 @@ class SacSplit extends HTMLElement {
     }
 
     _reclamp() {
-        if (this._current === null) return;
+        // Collapsed, one panel is hidden and the measured space means nothing:
+        // a clamp now would rewrite `position` for good. Wait for the expand.
+        if (this._current === null || this.hasAttribute("collapsed")) return;
         this._set(this._current, { emit: true, reflect: this.hasAttribute("position") });
     }
 
@@ -262,6 +324,40 @@ class SacSplit extends HTMLElement {
     _syncLabel() {
         this._divider.setAttribute("aria-label",
             this.getAttribute("aria-label") || t("split.resize-panels", "Resize panels"));
+        this._backText.textContent = this.getAttribute("back-label") || t("split.back", "Back");
+    }
+
+    /** The collapse threshold in px; 0 = never collapses. */
+    _collapseAt() {
+        const v = this.getAttribute("collapse");
+        if (v === null) return 0;
+        if (v === "" || v === "compact") return 768;
+        if (v === "narrow") return 480;
+        const n = parseFloat(v);
+        return isFinite(n) && n > 0 ? n : 768;
+    }
+
+    /** A rail the nav turned into a drawer sits in the start slot (the
+     *  resizable-sidebar recipe): collapsed, the split must not hide it with
+     *  its panel — it lives off-canvas now, and the end panel is the page. */
+    _syncRailStart() {
+        const slot = this.shadowRoot.querySelector('slot[name="start"]');
+        const rail = slot && slot.assignedElements().some((el) => el.hasAttribute("drawer"));
+        this.toggleAttribute("rail-start", !!rail);
+        this._syncCollapse();
+    }
+
+    _syncCollapse() {
+        const at = this._collapseAt();
+        const w = this.getBoundingClientRect().width;
+        const railDrawer = this.hasAttribute("rail-start") && this._compactMQ.matches;
+        const next = (at > 0 && w > 0 && w <= at) || railDrawer;
+        if (next === this.hasAttribute("collapsed")) return;
+        this.toggleAttribute("collapsed", next);
+        if (!next) this._reclamp();   // the clamp skipped while collapsed
+        this.dispatchEvent(new CustomEvent("sac:collapse", {
+            detail: { collapsed: next }, bubbles: true, composed: true,
+        }));
     }
 
     /* -------------------------------------------------------------- pointer */
@@ -375,8 +471,6 @@ class SacSplit extends HTMLElement {
                     min-width: 0;
                     min-height: 0;
                     overflow: auto;
-                    scrollbar-width: thin;
-                    scrollbar-color: var(--scrollbar-thumb) transparent;
                 }
                 /* Sized panel: flex-basis is written by _set(), never grows or
                    shrinks on its own. */
@@ -384,18 +478,35 @@ class SacSplit extends HTMLElement {
                 /* Everything the start panel and the divider leave over. */
                 .end   { flex: 1 1 0; }
 
-                /* Scrollbar theme — duplicated because the global rule in
-                   ui.css doesn't pierce Shadow DOM. */
-                .pane::-webkit-scrollbar { width: 8px; height: 8px; }
+                /* Scrollbar — the kit recipe (ui.css §5), re-stated because
+                   ::-webkit-scrollbar does not pierce a shadow root. Firefox, which has
+                   no ::-webkit-scrollbar, gets the standard pair instead. */
+                .pane::-webkit-scrollbar { width: 10px; height: 10px; }
                 .pane::-webkit-scrollbar-track { background: transparent; }
                 .pane::-webkit-scrollbar-thumb {
                     background: var(--scrollbar-thumb);
-                    border-radius: var(--radius-s);
+                    background-clip: content-box;
+                    border: 2px solid transparent;
+                    border-radius: 999px;
+                }
+                .pane::-webkit-scrollbar-thumb:hover {
+                    background: var(--scrollbar-thumb-hover);
+                    background-clip: content-box;
+                }
+                .pane::-webkit-scrollbar-corner { background: transparent; }
+                @supports not selector(::-webkit-scrollbar) {
+                    .pane { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
                 }
 
+                /* The divider takes ONE pixel of layout — the hairline
+                   itself. Its grab zone (--split-divider) is an invisible
+                   ::after laid OVER both panels, so no empty strip ever
+                   stands between a panel's edge (or its scrollbar) and the
+                   line. */
                 .divider {
                     position: relative;
-                    flex: 0 0 var(--split-divider);
+                    z-index: 1;              /* the grab zone overlays the end panel */
+                    flex: 0 0 1px;
                     align-self: stretch;
                     box-sizing: border-box;
                     cursor: col-resize;
@@ -403,28 +514,22 @@ class SacSplit extends HTMLElement {
                 }
                 :host([direction="vertical"]) .divider { cursor: row-resize; }
 
-                /* 1px hairline, centered in the hit area. A 1px accent line on
-                   hover/drag is the whole feedback — no thick colored edge. */
+                /* 1px hairline. A 1px accent line on hover/drag is the whole
+                   feedback — no thick colored edge. */
                 .divider::before {
                     content: "";
                     position: absolute;
-                    top: 0;
-                    bottom: 0;
-                    left: 50%;
-                    width: 1px;
-                    margin-left: -0.5px;
+                    inset: 0;
                     background: var(--border-strong);
                     transition: background 120ms var(--ease-smooth);
                 }
-                :host([direction="vertical"]) .divider::before {
-                    top: 50%;
-                    bottom: auto;
-                    left: 0;
-                    right: 0;
-                    width: auto;
-                    height: 1px;
-                    margin-left: 0;
-                    margin-top: -0.5px;
+                .divider::after {
+                    content: "";
+                    position: absolute;
+                    inset: 0 calc((1px - var(--split-divider)) / 2);
+                }
+                :host([direction="vertical"]) .divider::after {
+                    inset: calc((1px - var(--split-divider)) / 2) 0;
                 }
 
                 .divider:hover::before,
@@ -433,7 +538,66 @@ class SacSplit extends HTMLElement {
 
                 .divider:focus-visible {
                     outline: 2px solid var(--accent);
+                    outline-offset: 1px;
+                }
+
+                /* Collapsed: one panel at a time, full size. !important beats
+                   the inline flex-basis _set() keeps writing. */
+                :host([collapsed]) .divider { display: none; }
+                :host([collapsed]) .pane { flex: 1 1 0 !important; }
+                :host([collapsed]:not([show="end"])) .end { display: none; }
+                :host([collapsed][show="end"]) .start { display: none; }
+
+                /* Collapsed with a drawer rail in the start slot: the start
+                   panel shrinks to nothing but stays rendered (a display:none
+                   ancestor would hide the drawer too), the end panel is shown
+                   whatever \`show\` says, and there is nothing to go back to. */
+                :host([collapsed][rail-start]) .start {
+                    display: block;
+                    flex: 0 0 0 !important;
+                    overflow: visible;
+                }
+                :host([collapsed][rail-start]) .end { display: block; }
+                :host([collapsed][rail-start]) .back { display: none !important; }
+
+                .back { display: none; }
+                :host([collapsed][show="end"]:not([no-back])) .back {
+                    display: flex;
+                    position: sticky;
+                    top: 0;
+                    z-index: 1;
+                    align-items: center;
+                    padding: 0.35rem 0.5rem;
+                    background: var(--glass-strong);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
+                    border-bottom: 1px solid var(--border);
+                }
+                .back button {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.25rem;
+                    min-height: 36px;
+                    padding: 0 0.6rem 0 0.25rem;
+                    border: none;
+                    border-radius: var(--radius-m);
+                    background: none;
+                    color: var(--accent-text);
+                    font: 600 0.85rem 'Inter', sans-serif;
+                    cursor: pointer;
+                    --icon-size: 18px;
+                }
+                .back button:hover { background: var(--hover); }
+                .back button:focus-visible {
+                    outline: 2px solid var(--accent);
                     outline-offset: -2px;
+                }
+                @media (pointer: coarse) {
+                    .back button { min-height: 44px; }
+                    /* A finger needs more than 9px: an invisible halo widens
+                       the grab zone without moving the layout math. */
+                    .divider::after { content: ""; position: absolute; inset: 0 -12px; }
+                    :host([direction="vertical"]) .divider::after { inset: -12px 0; }
                 }
 
                 @media (prefers-reduced-motion: reduce) {
@@ -442,12 +606,24 @@ class SacSplit extends HTMLElement {
             </style>
             <div class="pane start"><slot name="start"></slot></div>
             <div class="divider" tabindex="0" role="separator"></div>
-            <div class="pane end"><slot name="end"></slot></div>
+            <div class="pane end">
+                <div class="back" part="back">
+                    <button type="button"><sac-icon name="chevron-left"></sac-icon><span class="back-text"></span></button>
+                </div>
+                <slot name="end"></slot>
+            </div>
         `;
 
         this._start   = this.shadowRoot.querySelector(".start");
         this._end     = this.shadowRoot.querySelector(".end");
         this._divider = this.shadowRoot.querySelector(".divider");
+        this._backText = this.shadowRoot.querySelector(".back-text");
+        // [drawer] is set on the rail by sac-nav after the fact: watch for it.
+        this.shadowRoot.querySelector('slot[name="start"]')
+            .addEventListener("slotchange", () => this._syncRailStart());
+        new MutationObserver(() => this._syncRailStart())
+            .observe(this, { attributes: true, subtree: true, attributeFilter: ["drawer", "slot"] });
+        this.shadowRoot.querySelector(".back button").addEventListener("click", () => this.back());
 
         // Listeners live on the shadow-internal divider, so they die with the
         // shadow root: no document-level pointer handlers to leak, and nested

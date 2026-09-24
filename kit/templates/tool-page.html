@@ -2,7 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- viewport-fit=cover: the page runs under a phone's notch and home bar;
+         the kit pads its nav, layouts and scroll regions by the safe-area
+         insets, so nothing important ends up behind them. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- Browser chrome colour (a phone's status bar / tab strip). These two
+         values mirror the --bg seeds in kit/css/ui.css (dark / light) — the
+         one place a seed is repeated, because a meta tag cannot read a custom
+         property. A custom theme updates them together with its seeds. -->
+    <meta name="theme-color" content="#0b0f1a" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)">
     <title>My Tool</title>
     <!-- Tool pages usually get their own style.css whose first line is
          @import '../kit/css/ui.css';  followed by the per-app accent:
@@ -44,18 +53,33 @@
     <script defer src="../kit/js/components/sac-theme-toggle.js"></script>
 </head>
 <body class="app-page">
-    <sac-nav brand="MY TOOLS" app-name="MY TOOL" brand-href="/">
+    <!-- On a phone the ribbon shows app-name as text beside the burger and
+         leaves the rest to the toolbar; opening the burger brings back the
+         icons — the desktop brand row. -->
+    <sac-nav brand="MY TOOLS" brand-icon="cube" app-name="MY TOOL" brand-href="/">
         <!-- Per-page actions in the ribbon: the .toolbar recipe sizes
-             .btn to the 32px ribbon height — no inline styles. -->
+             .btn to the ribbon height — no inline styles. When they stop
+             fitting (a phone, a narrow window) the trailing buttons move
+             behind a "…" menu by themselves; data-overflow="never" pins one. -->
         <div slot="toolbar" class="toolbar">
             <button class="btn primary" id="btn-open">Open File</button>
             <button class="btn" id="btn-export">Export</button>
+            <button class="nav-icon-btn" id="btn-help" title="Help"
+                    onclick="document.getElementById('help-window').open()">
+                <sac-icon name="info"></sac-icon>
+            </button>
         </div>
     </sac-nav>
 
     <div class="workspace">
-        <div class="main-layout">   <!-- has padding-top:50px for the nav -->
+        <div class="main-layout">   <!-- clears the fixed nav (50px + notch) -->
 
+            <!-- The rail. On a phone (<= 768px) the nav's burger opens it as an
+                 off-canvas drawer and the viewport gets the full width —
+                 nothing to wire: sac-nav adopts the first .sidebar /
+                 <sac-sidebar> inside .main-layout (rail="…" picks another,
+                 rail="none" opts out). Scrim, Escape, swipe-to-close and the
+                 focus trap come with it. -->
             <div class="sidebar">
                 <sac-section title="Settings">
                     <sac-slider label="Amount" min="0" max="100" value="50" suffix="%"></sac-slider>
@@ -75,6 +99,9 @@
             <div class="viewport" id="viewport">
                 <!-- For pan/zoom, put drawable content in a .pz-layer and wire:
                      sac.setupPanZoom({ panes: [{ pane: viewportEl, layer: layerEl }] })
+                     On a phone the viewport is the whole screen below the nav;
+                     one finger pans, two pinch-zoom — only inside the pane,
+                     the browser's own zoom keeps working everywhere else.
                 -->
                 <div class="pz-layer" id="layer">
                     <canvas id="canvas"></canvas>
@@ -85,7 +112,10 @@
         </div>
     </div>
 
-    <!-- Floating window, e.g. for markdown help via the help-loader module. -->
+    <!-- Floating window, e.g. for markdown help via the help-loader module.
+         The left/top/width/height are the DESKTOP rect; on a phone the window
+         opens maximized below the nav instead (no drag, close button kept),
+         and returns to this rect when the screen is wide again. -->
     <sac-window id="help-window" title="Help" width="500px" height="600px" left="calc(100vw - 540px)" top="90px">
         <div id="help-content"></div>
     </sac-window>

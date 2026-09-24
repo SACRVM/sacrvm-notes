@@ -117,6 +117,8 @@
  *                        unmount() (when present) and drops window or view.
  *                        Emits "sac:apps-changed".
  *   isOpen(id)           → boolean (window open, or view currently on stage)
+ *   isDirty(id)          → boolean — the app said it holds unsaved work
+ *                        (context.setDirty). Ask before remove()ing it.
  *   active()             → id of the view on stage, or null
  *   init(options?)       binds click on [data-app="<id>"] tiles (delegated,
  *                        so tiles rendered later work too), handles the
@@ -147,8 +149,10 @@
  *                                  // changes from outside — a rail link, the back
  *                                  // button, a pasted URL. Returns an unsubscribe.
  *       host: {                    // views only, null standalone: what the HOST
- *           name, icon, href,      // injects into the app's own chrome. The
- *           nav, toolbar           // app assigns it to its own <sac-nav>
+ *           name, icon, href,      // injects into the app's own chrome. PLAIN
+ *           nav:     [{label, href, icon?}],       // DATA, never DOM nodes —
+ *           toolbar: [{icon, label?, title?,       // the app's OWN <sac-nav>
+ *                      href? | onClick?}],         // renders every bit of it
  *       },                         // (nav.host = context.host): ⌂ jump, suite
  *                                  // nav in the burger, controls in the ribbon.
  *                                  // A host may re-declare (init({host}) again):
@@ -181,6 +185,16 @@
  *           get(),                 // null when the host granted none. READ-ONLY:
  *           onChange(cb),          // the profile belongs to the host, not to an app
  *       },
+ *       files: {                   // the USER's files (kit/js/lib/files.js) —
+ *           open(opts),            // Open… / Save as… wherever the host keeps
+ *           save(data, opts),      // them (device by default, the desktop's
+ *           kind,                  // space when it installed one). Null when
+ *       },                         // the host loaded no files lib
+ *       setDirty(flag),            // true = unsaved work: leaving the page asks
+ *                                  // first, sac.apps.isDirty(id) tells a host,
+ *                                  // document gets sac:dirty { id, dirty }.
+ *                                  // Closing a window loses nothing (it stays
+ *                                  // in the DOM) and so never asks.
  *   }
  *
  * Events:
@@ -208,6 +222,27 @@
     let activeId  = null;         // the view currently on stage
     let baseTitle = "";           // document.title at init, restored at home
     let hostInfo  = null;         // { name, icon, href } injected as context.host
+    const dirty   = new Set();    // ids holding unsaved work (context.setDirty)
+
+    /* ------------------------------------------------------------ dirty -- */
+
+    // One listener for the page: while ANY app holds unsaved work, leaving or
+    // reloading asks first. The browser words the question; we only arm it.
+    function onBeforeUnload(e) {
+        if (!dirty.size) return;
+        e.preventDefault();
+        e.returnValue = "";
+    }
+    function setDirty(id, flag) {
+        const was = dirty.has(id);
+        if (flag) dirty.add(id); else dirty.delete(id);
+        if (was === !!flag) return;
+        if (dirty.size === 1 && flag)  window.addEventListener("beforeunload", onBeforeUnload);
+        if (dirty.size === 0 && !flag) window.removeEventListener("beforeunload", onBeforeUnload);
+        document.dispatchEvent(new CustomEvent("sac:dirty", {
+            detail: { id, dirty: !!flag }, bubbles: true,
+        }));
+    }
 
     /* ------------------------------------------------------------- URL ---- */
 
@@ -334,6 +369,12 @@
             // Read-only: an app learns who is here, it does not get to rename
             // them everywhere. Null when the host granted no identity.
             identity: window.sac.identity ? sac.identity.forApp() : null,
+            // The user's files (kit/js/lib/files.js): Open… / Save as… wherever
+            // the host keeps them. Null when the host loaded no files lib.
+            files: window.sac.files ? sac.files.forApp() : null,
+            // "I hold work that is not saved." The host warns before the page
+            // goes away and can ask before removing the app; see isDirty().
+            setDirty(flag) { setDirty(id, flag); },
         };
 
         if (manifest.kind !== "view") {
@@ -746,6 +787,7 @@
 
     function remove(id) {
         registry.delete(id);
+        setDirty(id, false);
         const rec = windows.get(id);
         if (rec) {
             unmountEl(id, rec.el);
@@ -941,6 +983,7 @@
 
     sac.apps = {
         register, list, get, open, close, remove, isOpen, active, init,
+        isDirty: (id) => dirty.has(id),
         inspect, add,
         theme,   // the one theme source; sac.app borrows it when standalone
     };
