@@ -7,7 +7,9 @@
  * context.host — the full package { name, icon, href, nav, toolbar } — and
  * the app hands it to its own nav, which renders the "⌂ HOST ·" jump, the
  * suite's nav group in the burger panel and the host's toolbar controls;
- * standalone context.host is null and nothing is injected.
+ * standalone context.host is null and nothing is injected. On a phone the
+ * burger opens the note list alone (host-nav="wide"): the suite group stays
+ * a desktop affair, and the ribbon's ⌂ is the way back to the host.
  *
  * Every note is an address. The rail links are built with context.href(), the
  * selection is published with context.deepLink.set(), and context.onRoute()
@@ -164,7 +166,7 @@
             // textContent, never innerHTML. The nav and the rail are the
             // app's OWN chrome; a host adds nothing but context.host.
             this.innerHTML = `
-<sac-nav brand="NOTES" brand-icon="note">
+<sac-nav brand="NOTES" brand-icon="note" host-nav="wide">
     <div slot="context"><sac-theme-toggle></sac-theme-toggle></div>
 </sac-nav>
 <div class="main-layout">
