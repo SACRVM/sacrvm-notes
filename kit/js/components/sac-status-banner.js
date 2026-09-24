@@ -21,6 +21,10 @@
  *
  * All four kinds map to semantic seeds: error→--danger, info→--accent,
  * warn→--accent-warm, success→--ok.
+ *
+ * Compact/touch: in flow and full width, so it follows its container; long
+ * unbroken strings (paths, URLs, error codes) wrap rather than pushing the
+ * page sideways at 360px. Nothing to tap — it has no controls.
  */
 class SacStatusBanner extends HTMLElement {
     static get observedAttributes() { return ["kind", "message", "open"]; }
@@ -67,6 +71,7 @@ class SacStatusBanner extends HTMLElement {
                     font-size: 13px;
                     line-height: 1.4;
                     border: 1px solid transparent;
+                    overflow-wrap: anywhere;
                 }
 
                 :host([kind="error"]) .banner,

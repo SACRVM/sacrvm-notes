@@ -7,6 +7,11 @@
  * Methods:
  *   show(title, subtitle)  — displays overlay
  *   hide()                 — fades out over 300ms
+ *
+ * Compact/touch: the overlay covers the whole screen (fixed, inset 0) and its
+ * content keeps clear of notches and the home indicator with safe-area
+ * padding; a long title or subtitle wraps centered instead of running past
+ * the screen edges. It has no controls.
  */
 (function () {
 
@@ -58,6 +63,14 @@ class SacLoader extends HTMLElement {
                     z-index: 10000;
                     opacity: 0;
                     transition: opacity 0.3s;
+                    /* Room for the text at 360px, clear of notch and home
+                       indicator (env() is 0 on desktop). */
+                    padding: calc(1rem + env(safe-area-inset-top, 0px))
+                             calc(1rem + env(safe-area-inset-right, 0px))
+                             calc(1rem + env(safe-area-inset-bottom, 0px))
+                             calc(1rem + env(safe-area-inset-left, 0px));
+                    text-align: center;
+                    overflow-wrap: anywhere;
                 }
                 .spinner {
                     position: relative;

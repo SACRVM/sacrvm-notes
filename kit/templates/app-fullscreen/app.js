@@ -23,7 +23,9 @@
             sac.app.styles(BASE + "app.css", "app-my-fullscreen-app-css");
             // The app's own chrome. The rail is the app's table of contents;
             // sliders and colour fields stay in the content area — they are
-            // not navigation.
+            // not navigation. On a phone the nav adopts the rail (the first
+            // <sac-sidebar> inside .main-layout) and its burger opens it as a
+            // drawer that closes on an item tap — nothing to wire.
             this.innerHTML = `
                 <sac-nav brand="MY FULLSCREEN APP" brand-icon="cube">
                     <div slot="context"><sac-theme-toggle></sac-theme-toggle></div>

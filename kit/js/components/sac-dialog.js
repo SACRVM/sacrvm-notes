@@ -24,9 +24,14 @@
  *
  * Arming:
  *   - A button with armAfterMs waits N ms, then receives focus so Enter acts.
- *   - If the user's pointer enters any other button before the arm fires, the
- *     timer is cancelled — we don't steal focus from an actively-interacting
- *     user.
+ *   - If the user's pointer enters (or a finger touches) any other button
+ *     before the arm fires, the timer is cancelled — we don't steal focus
+ *     from an actively-interacting user.
+ *
+ * Compact (≤768px, or a phone held sideways — ui.css §15): a BOTTOM SHEET — full width, anchored to the
+ * bottom edge above the home-indicator safe area, at most 85dvh tall with the
+ * body scrolling, actions full-width and stacked (the last button, usually
+ * the primary one, on top). Focus trap and Escape are unchanged.
  */
 class SacDialog extends HTMLElement {
     constructor() {
@@ -205,16 +210,25 @@ class SacDialog extends HTMLElement {
                     font-size: 0.9rem;
                     line-height: 1.5;
                     color: var(--text-muted);
-                    /* Scrollbar theme — duplicated because the global rule
-                       in ui.css doesn't pierce Shadow DOM. */
-                    scrollbar-width: thin;
-                    scrollbar-color: var(--scrollbar-thumb) transparent;
                 }
-                .body::-webkit-scrollbar { width: 6px; }
+                /* Scrollbar — the kit recipe (ui.css §5), re-stated because
+                   ::-webkit-scrollbar does not pierce a shadow root. Firefox, which has
+                   no ::-webkit-scrollbar, gets the standard pair instead. */
+                .body::-webkit-scrollbar { width: 10px; height: 10px; }
                 .body::-webkit-scrollbar-track { background: transparent; }
                 .body::-webkit-scrollbar-thumb {
                     background: var(--scrollbar-thumb);
-                    border-radius: var(--radius-s);
+                    background-clip: content-box;
+                    border: 2px solid transparent;
+                    border-radius: 999px;
+                }
+                .body::-webkit-scrollbar-thumb:hover {
+                    background: var(--scrollbar-thumb-hover);
+                    background-clip: content-box;
+                }
+                .body::-webkit-scrollbar-corner { background: transparent; }
+                @supports not selector(::-webkit-scrollbar) {
+                    .body { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
                 }
                 .body ::slotted(p) { margin: 0; }
                 /* No combinators inside ::slotted() — it takes a compound
@@ -295,6 +309,35 @@ class SacDialog extends HTMLElement {
                 @keyframes fade-in {
                     to { opacity: 1; }
                 }
+                @keyframes sheet-in {
+                    from { opacity: 1; transform: translateY(100%); }
+                    to   { opacity: 1; transform: none; }
+                }
+
+                @media (max-width: 768px), (max-height: 480px) and (pointer: coarse) {
+                    :host { align-items: flex-end; }
+                    .panel {
+                        width: 100%;
+                        max-width: 100%;
+                        max-height: 85dvh;
+                        border-bottom: none;
+                        border-radius: var(--radius-l) var(--radius-l) 0 0;
+                        padding-bottom: env(safe-area-inset-bottom, 0px);
+                        transform: translateY(100%);
+                        animation: sheet-in 220ms var(--ease-smooth) forwards;
+                    }
+                    .actions {
+                        flex-direction: column-reverse;
+                        align-items: stretch;
+                    }
+                    .btn { width: 100%; }
+                }
+                @media (pointer: coarse) {
+                    .btn { min-height: 44px; }
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    .backdrop, .panel { animation-duration: 1ms; }
+                }
                 @keyframes pop-in {
                     to { opacity: 1; transform: scale(1); }
                 }
@@ -333,15 +376,18 @@ class SacDialog extends HTMLElement {
             btn.type = "button";
             btn.textContent = spec.label;
             btn.addEventListener("click", () => this.close(spec.action));
-            btn.addEventListener("mouseenter", () => {
-                // Any pointer interaction with a *different* button cancels
-                // the arm timer so we don't yank focus from the user.
+            // Any pointer interaction with a *different* button cancels the
+            // arm timer so we don't yank focus from the user. pointerdown is
+            // the touch equivalent: a finger never "enters" before it lands.
+            const disarm = () => {
                 if (this._armTimer != null) {
                     const armedIdx = this.buttons.findIndex(b => b.armAfterMs > 0);
                     const myIdx = this.buttons.indexOf(spec);
                     if (myIdx !== armedIdx) this._cancelArmTimer();
                 }
-            });
+            };
+            btn.addEventListener("mouseenter", disarm);
+            btn.addEventListener("pointerdown", disarm);
             row.appendChild(btn);
         });
     }

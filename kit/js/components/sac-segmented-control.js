@@ -21,6 +21,12 @@
  *   sac:change — e.detail = { value } (string), on user click/keypress only.
  *                Bubbles, NOT composed (native change semantics).
  *
+ * Compact/touch: the control never runs past its container — too many
+ * segments fold onto a second row (flex-wrap; nothing changes while they
+ * fit). Under (pointer: coarse) each segment keeps its look and gets an
+ * invisible 44px-tall hit halo; under (hover: none) no hover wash sticks to a
+ * tapped segment.
+ *
  * Theming: the active segment uses --accent. For an edit-mode group, set
  * `style="--accent: var(--accent-edit)"` on the control — the per-element
  * accent override is the intended mechanism (no hardcoded per-value colors).
@@ -66,6 +72,12 @@ class SacSegmentedControl extends HTMLElement {
                     border-radius: var(--radius-m);
                     padding: 2px;
                     gap: 2px;
+                    /* Too many segments for the space (a phone, a narrow
+                       window): fold onto a second row rather than run off the
+                       edge. Changes nothing while the row fits. */
+                    flex-wrap: wrap;
+                    max-width: 100%;
+                    box-sizing: border-box;
                 }
                 /* NOTE: document styles beat ::slotted() styles for slotted
                    light-DOM children regardless of specificity (CSS scoping
@@ -99,6 +111,29 @@ class SacSegmentedControl extends HTMLElement {
                     ::slotted(button) { transition: none !important; }
                 }
                 :host([disabled]) { opacity: .5; pointer-events: none; }
+
+                /* Touch: the segment keeps its look, an invisible halo takes
+                   the hit area to 44px tall (min(): only a short axis grows).
+                   !important for the same document-beats-::slotted reason. */
+                @media (pointer: coarse) {
+                    ::slotted(button) { position: relative !important; }
+                    ::slotted(button)::after {
+                        content: "";
+                        position: absolute;
+                        inset: min(0px, calc((100% - 44px) / 2));
+                    }
+                }
+                /* No stuck hover wash on the segment a finger just tapped. */
+                @media (hover: none) {
+                    ::slotted(button:hover) {
+                        background: transparent !important;
+                        color: color-mix(in srgb, var(--fg) 78%, var(--bg)) !important;
+                    }
+                    ::slotted(button.active:hover) {
+                        background: var(--accent-fill) !important;
+                        color: var(--on-accent) !important;
+                    }
+                }
             </style>
             <slot></slot>
         `;

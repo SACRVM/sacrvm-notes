@@ -43,6 +43,15 @@
  *   Enter               — activates the focused item (native button click)
  *   Escape              — closes and returns focus to the trigger
  *   Tab                 — closes and lets focus move on
+ *
+ * Compact/touch:
+ *   The panel is never wider than the viewport minus 8px a side
+ *   (min(180px, 100vw - 16px) minimum, 100vw - 16px maximum), so the 8px
+ *   clamp holds on a 360px phone. Under (pointer: coarse) every item is at
+ *   least 44px tall. Nothing is hover-only: the trigger opens on tap and the
+ *   hover highlight is decoration (the menu closes on the tap anyway). A
+ *   closed panel takes no layout at all, so a menu at the right edge of a
+ *   phone page never adds horizontal scroll.
  */
 class SacMenu extends HTMLElement {
     static get observedAttributes() { return ["open"]; }
@@ -129,16 +138,20 @@ class SacMenu extends HTMLElement {
                    invisible, with nothing in the console. The top layer is
                    outside that chain entirely.
 
-                   The author display: flex below beats the UA's
-                   [popover]:not(:popover-open) { display: none }, which is
-                   deliberate: the panel keeps its own opacity/visibility
-                   transition instead of snapping through display. */
+                   The panel leaves layout only once it has left the top layer
+                   (see .panel:not(:popover-open) below) — after the close
+                   fade, not at the start of it — so it keeps its own
+                   opacity/visibility transition instead of snapping. */
                 .panel {
                     position: fixed;
                     inset: auto;                   /* the UA pins popovers to all four sides… */
                     margin: 0;                     /* …and centres them with auto margins */
                     z-index: 9999;                 /* same layer as sac-chip-input's dropdown */
-                    min-width: 180px;
+                    box-sizing: border-box;
+                    /* Never wider than the viewport minus the 8px clamp margin
+                       a side — a 360px phone still gets the full clamp. */
+                    min-width: min(180px, 100vw - 16px);
+                    max-width: calc(100vw - 16px);
                     background: var(--glass-strong);
                     backdrop-filter: blur(12px);
                     -webkit-backdrop-filter: blur(12px);
@@ -165,6 +178,24 @@ class SacMenu extends HTMLElement {
                     opacity: 1;
                     visibility: visible;
                     transform: translateY(0);
+                }
+                /* Out of the top layer = out of layout. A closed panel that
+                   stays laid out sits at its static position (or wherever it
+                   was last anchored) and, under a transformed ancestor, can
+                   push the page into horizontal scroll on a phone. While it
+                   is still :popover-open (the 160ms close fade, see _lower)
+                   it stays displayed, so the fade-out runs untouched. Browsers
+                   without popover drop this rule (unknown pseudo-class) and
+                   keep the old always-laid-out panel. */
+                .panel:not(:popover-open) { display: none; }
+                /* Coming back from display: none has no "before" style to
+                   transition from — @starting-style supplies the closed look
+                   so the open fade still plays. */
+                @starting-style {
+                    :host([open]) .panel {
+                        opacity: 0;
+                        transform: translateY(-4px);
+                    }
                 }
                 @media (prefers-reduced-motion: reduce) {
                     .panel,
@@ -212,6 +243,12 @@ class SacMenu extends HTMLElement {
                     border-top: 1px solid var(--border);
                     margin: 4px 2px;
                     width: auto;
+                }
+
+                /* Touch: a 44px row per item. The look stays a menu row — only
+                   the height grows. */
+                @media (pointer: coarse) {
+                    ::slotted(button) { min-height: 44px; }
                 }
             </style>
             <span class="trigger"><slot name="trigger"></slot></span>

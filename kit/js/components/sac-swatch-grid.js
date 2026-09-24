@@ -83,6 +83,15 @@
  * Roving tabindex follows whichever swatch last had focus — click, arrow-nav
  * and Tab-in all update it — so Tab always resumes where the user left off.
  *
+ * Compact/touch: no dragging anywhere — tap selects, arrows walk. Columns
+ * stay at `columns` (it is also the keyboard stride, and a palette's rows
+ * often mean something), cells shrink with the container, and a long caption
+ * ellipsizes instead of widening its column. Under (pointer: coarse) each
+ * button's hit area is the cell plus half the 8px gap on every side (hit
+ * areas tile the grid; 44px once a cell is ~36px wide) — pick fewer columns
+ * for touch-first palettes. Under (hover: none) no swatch stays lifted after
+ * a tap. The `title`/`tooltip` name is a nicety, never the only label.
+ *
  * Accessibility: role="listbox"/"group" lives on the grid's HOST element;
  * role="option" (+ aria-selected) lives on each swatch's shadow-internal
  * <button> — the actually-focusable node — and only while the grid is
@@ -308,6 +317,30 @@
                     }
                     .caption[hidden] { display: none; }
 
+                    /* Touch: a halo grows a small cell's hit area toward 44px —
+                       but only by up to 4px a side, HALF the grid's 8px gap. A
+                       bigger halo would reach into the neighbouring cell, and
+                       the later swatch's halo paints (and hits) on top, so a
+                       tap on the right half of one colour would pick the next.
+                       Capped, the hit areas tile the grid with no dead gaps and
+                       no stealing: cell + gap, which is 44px from a ~36px cell
+                       up. Dense grids on a phone should use fewer columns.
+                       manipulation: rapid taps select instead of zooming. */
+                    @media (pointer: coarse) {
+                        button {
+                            position: relative;
+                            touch-action: manipulation;
+                        }
+                        button::after {
+                            content: "";
+                            position: absolute;
+                            inset: max(-4px, min(0px, calc((100% - 44px) / 2)));
+                        }
+                    }
+                    /* A tap leaves :hover stuck — no lifted swatch. */
+                    @media (hover: none) {
+                        button:hover:not(:disabled) { transform: none; }
+                    }
                     @media (prefers-reduced-motion: reduce) {
                         button { transition: none; }
                         button:hover:not(:disabled) { transform: none; }
@@ -476,6 +509,11 @@
                         grid-template-columns: repeat(var(--sac-swatch-columns, 8), 1fr);
                         gap: 8px;
                     }
+                    /* A cell may shrink below its caption's text width (the
+                       caption ellipsizes) — otherwise one long caption on a
+                       narrow screen blows its column up and the grid past the
+                       container's edge. */
+                    ::slotted(*) { min-width: 0; }
                 </style>
                 <div class="grid"><slot></slot></div>
             `;

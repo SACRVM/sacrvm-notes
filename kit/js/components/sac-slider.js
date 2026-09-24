@@ -18,6 +18,12 @@
  *   value    — get/set, reflects the attribute (string).
  *   disabled — get/set, reflects the attribute.
  *
+ * Compact/touch: a native range input, so pointer/touch dragging is the
+ * browser's own. Under (pointer: coarse) the input is a 44px-tall hit strip
+ * (the 4px track is drawn inside it), the thumb grows to 20px, and
+ * touch-action: pan-y lets a vertical swipe over the slider scroll the page
+ * while a sideways drag moves the thumb.
+ *
  * Events (bubble, NOT composed — like native input/change; detail { value }):
  *   sac:input  — fired on drag (live); detail.value = string.
  *   sac:change — fired on release;     detail.value = string.
@@ -133,6 +139,35 @@ class SacSlider extends HTMLElement {
                 }
                 :host([disabled]) { opacity: .5; }
                 :host([disabled]) input[type="range"] { cursor: not-allowed; }
+
+                /* Touch: the input itself becomes a 44px-tall hit strip with
+                   the 4px track drawn inside it, and the thumb grows to 20px
+                   — a 14px dot is not something a finger can find. pan-y: a
+                   sideways drag moves the thumb, a vertical one still scrolls
+                   the page (a slider in a long sidebar must not trap it). */
+                @media (pointer: coarse) {
+                    input[type="range"] {
+                        height: 44px;
+                        background: transparent;
+                        touch-action: pan-y;
+                    }
+                    input[type="range"]::-webkit-slider-runnable-track {
+                        height: 4px;
+                        background: color-mix(in srgb, var(--fg) 10%, transparent);
+                        border-radius: var(--radius-s);
+                    }
+                    input[type="range"]::-moz-range-track {
+                        height: 4px;
+                        background: color-mix(in srgb, var(--fg) 10%, transparent);
+                        border-radius: var(--radius-s);
+                    }
+                    input[type="range"]::-webkit-slider-thumb {
+                        width: 20px; height: 20px;
+                        margin-top: -8px;        /* centre on the 4px track */
+                    }
+                    input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; }
+                    .row { margin-bottom: 0; }
+                }
             </style>
             <div class="row">
                 <span class="label">${label}</span>

@@ -40,7 +40,8 @@
  *                        active tab is panned into view whenever `active`
  *                        changes (a deep link must not select a tab nobody
  *                        can see). Absent → the strip is a single unwrapped
- *                        row, as before.
+ *                        row, as before — except on a compact screen
+ *                        (ui.css §15), where it pans like "scroll".
  *   Properties: active — get/set, reflects the attribute. Setting it does NOT
  *                        fire sac:tab-show (the caller already knows); user
  *                        interaction does.
@@ -57,6 +58,13 @@
  *   Attributes: name   — the key matching a tab's name.
  *               active — set BY THE GROUP, not by hand. Hidden unless present.
  *
+ * Compact/touch: a panning strip is an ordinary scroll container, so a finger
+ * swipes it natively (overscroll-behavior-x: contain keeps the swipe from
+ * becoming browser back/forward); the ‹ › buttons are plain clicks. Under
+ * (pointer: coarse) tabs are 44px tall and the ‹ › buttons 44px wide. Under (hover: none) no hover
+ * wash stays stuck on a tapped tab. overflow="wrap" is unchanged — every
+ * tab stays visible, on as many rows as it takes.
+ *
  * Accessibility note: the strip is role="tablist" and each tab's internal
  * button is role="tab" with aria-selected kept in sync; panels are
  * role="tabpanel". aria-controls / aria-labelledby are deliberately NOT wired:
@@ -68,6 +76,11 @@
 
     const TAB_TAG   = "sac-tab";
     const PANEL_TAG = "sac-tab-panel";
+
+    /* The kit's `compact` breakpoint (ui.css section 15). A strip with no
+       `overflow` attribute pans like overflow="scroll" below it — on a phone
+       an unwrapped row of tabs would otherwise run off the screen. */
+    const COMPACT = matchMedia("(max-width: 768px), (max-height: 480px) and (pointer: coarse)");
 
     /* ====================================================================
        <sac-tab-group>
@@ -84,6 +97,14 @@
             this._onWheel = this._onWheel.bind(this);
             this._onPanClick = this._onPanClick.bind(this);
             this._ro = null;
+            this._onCompact = () => { this._scrollActiveTab(); this._updatePan(); };
+        }
+
+        /** Does the strip pan? overflow="scroll", or no overflow attribute on
+         *  a compact screen. "wrap" never pans. */
+        _pans() {
+            const mode = this.getAttribute("overflow");
+            return mode === "scroll" || (mode == null && COMPACT.matches);
         }
 
         connectedCallback() {
@@ -114,11 +135,13 @@
             // resizes (a sidebar drag, a window resize), not just content.
             this._ro = new ResizeObserver(() => this._updatePan());
             this._ro.observe(this.shadowRoot.querySelector(".strip"));
+            COMPACT.addEventListener("change", this._onCompact);
             this._sync();
         }
 
         disconnectedCallback() {
             this.removeEventListener("click", this._onClick);
+            COMPACT.removeEventListener("change", this._onCompact);
             if (this._ro) { this._ro.disconnect(); this._ro = null; }
         }
 
@@ -179,7 +202,7 @@
          * page around on load.
          */
         _scrollActiveTab() {
-            if (this.getAttribute("overflow") !== "scroll") return;
+            if (!this._pans()) return;
             const tab = this._tabs().find(t => t.hasAttribute("active"));
             if (!tab) return;
             const strip = this.shadowRoot.querySelector(".strip");
@@ -195,7 +218,7 @@
          * the strip has no vertical axis of its own.
          */
         _onWheel(e) {
-            if (this.getAttribute("overflow") !== "scroll") return;
+            if (!this._pans()) return;
             const strip = this.shadowRoot.querySelector(".strip");
             if (strip.scrollWidth <= strip.clientWidth) return;
             let delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
@@ -226,7 +249,7 @@
             const strip = this.shadowRoot.querySelector(".strip");
             const bar   = this.shadowRoot.querySelector(".bar");
             if (!strip || !bar) return;
-            const over = this.getAttribute("overflow") === "scroll"
+            const over = this._pans()
                       && strip.scrollWidth > strip.clientWidth + 1;
             bar.classList.toggle("overflowing", over);
             if (!over) return;
@@ -329,6 +352,24 @@
                     :host([overflow="scroll"]) ::slotted(*) {
                         flex: none;               /* keep natural width — pan, don't squeeze */
                     }
+                    /* A finger pans the strip natively (it is an ordinary
+                       scroll container); contain stops a sideways swipe that
+                       hits the end from turning into browser back/forward. */
+                    :host([overflow="scroll"]) .strip { overscroll-behavior-x: contain; }
+
+                    /* No overflow attribute on a compact screen: the same
+                       panning strip (see COMPACT / _pans()). */
+                    @media (max-width: 768px), (max-height: 480px) and (pointer: coarse) {
+                        :host(:not([overflow])) .strip {
+                            overflow-x: auto;
+                            overflow-y: hidden;
+                            padding-bottom: 1px;
+                            scrollbar-width: none;
+                            overscroll-behavior-x: contain;
+                        }
+                        :host(:not([overflow])) .strip::-webkit-scrollbar { display: none; }
+                        :host(:not([overflow])) ::slotted(*) { flex: none; }
+                    }
 
                     /* Pan buttons: only in scroll mode, only while there is
                        somewhere to pan (.overflowing, kept up by _updatePan).
@@ -356,6 +397,18 @@
                     }
                     .pan:disabled { opacity: 0.3; cursor: default; }
                     .pan sac-icon { --icon-size: 14px; }
+
+                    /* Touch: the strip is 44px tall (the tabs grow) and the pan
+                       buttons are 44px wide. Not a halo: past the bar's ends it
+                       would widen the page (a horizontal scroll on a phone),
+                       inward it would sit over the edge tabs. They only show
+                       while the strip overflows, and a swipe pans it anyway. */
+                    @media (pointer: coarse) {
+                        .bar.overflowing .pan { width: 44px; }
+                    }
+                    @media (hover: none) {
+                        .pan:hover:not(:disabled) { color: var(--text-muted); background: none; }
+                    }
 
                     @media (prefers-reduced-motion: reduce) {
                         .pan { transition: none; }
@@ -455,6 +508,19 @@
                         border-bottom-color: var(--accent);
                     }
                     :host([disabled]) button { cursor: default; }
+
+                    /* Touch: a 44px tall tab; no hover wash left stuck on the
+                       tab a finger just tapped. */
+                    @media (pointer: coarse) {
+                        button { min-height: 44px; }
+                    }
+                    @media (hover: none) {
+                        button:hover {
+                            color: color-mix(in srgb, var(--fg) 72%, var(--bg));
+                            background: none;
+                        }
+                        :host([active]) button:hover { color: var(--accent); }
+                    }
 
                     @media (prefers-reduced-motion: reduce) {
                         button { transition: none; }

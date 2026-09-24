@@ -52,6 +52,15 @@
  *   - ArrowUp/ArrowDown on the value field step by `step`; Shift steps by
  *     10× that.
  *
+ * Compact/touch: the ± buttons are pointer-event driven (press-and-hold works
+ * with a finger; a long press never opens the context menu). Under
+ * (pointer: coarse) the pill is 44px tall with 38px buttons whose hit halo
+ * reaches 44 x 44, the value field is a 44px target with 16px type (no iOS
+ * focus zoom), and
+ * touch-action: manipulation lets quick taps step without a double-tap zoom.
+ * A vertical swipe starting on a button still scrolls the page (it cancels
+ * the press). Nothing is hover-only.
+ *
  * Accessibility: the value field is role="spinbutton" with
  * aria-valuemin/max/now (+ aria-valuetext "3 parts" once a unit is set)
  * and aria-label from `label`. The ± buttons carry their own
@@ -284,6 +293,39 @@ class SacStepper extends HTMLElement {
                     display: none;
                 }
 
+                /* Touch: a 44px pill — 38px buttons, each with a halo out to
+                   44 x 44 — and 16px type in the field (below 16px iOS zooms
+                   the page on focus). touch-action: manipulation drops the
+                   double-tap-to-zoom wait, so quick taps step instead of
+                   zooming; a vertical swipe that starts on a button still
+                   scrolls the page (it cancels the press — no stray repeat). */
+                @media (pointer: coarse) {
+                    .stepper { height: 44px; }
+                    .btn {
+                        position: relative;
+                        width: 38px;
+                        height: 38px;
+                        font-size: 18px;
+                        touch-action: manipulation;
+                        -webkit-touch-callout: none;
+                    }
+                    .btn::after {
+                        content: "";
+                        position: absolute;
+                        inset: -3px;
+                    }
+                    /* Padding (the field is transparent) makes the value itself
+                       a 44 x 44 tap target between the two buttons. */
+                    .value-input {
+                        font-size: max(16px, 1rem);
+                        padding: 10px 8px;
+                    }
+                }
+                /* A tap leaves :hover stuck — no wash left on the button. */
+                @media (hover: none) {
+                    .btn:hover:not(:disabled) { background: transparent; color: var(--text-dim); }
+                    .btn:active:not(:disabled) { background: var(--hover-strong); }
+                }
                 @media (prefers-reduced-motion: reduce) {
                     .btn { transition: none; }
                 }
@@ -440,6 +482,12 @@ class SacStepper extends HTMLElement {
             // trailing click, so the flag doesn't stay stuck true forever.
             setTimeout(() => { this._pointerActive = false; }, 0);
         };
+        // A long press on touch is the hold-to-repeat gesture, not a request
+        // for the context menu. Only while OUR press is live — a mouse
+        // right-click never sets _pointerActive, so desktop keeps its menu.
+        btn.addEventListener("contextmenu", (e) => {
+            if (this._pointerActive) e.preventDefault();
+        });
         btn.addEventListener("pointerup", stop);
         btn.addEventListener("pointerleave", stop);
         btn.addEventListener("pointercancel", stop);

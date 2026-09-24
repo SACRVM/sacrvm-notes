@@ -27,6 +27,11 @@
  * Returns the <sac-window>. Re-opening the same About (matched by name) brings
  * the existing one to front instead of stacking a duplicate. All text is set
  * via textContent — notice text is third-party and is never trusted as markup.
+ *
+ * Compact/touch: sac-window maximizes itself on compact the moment it opens,
+ * so the fit-to-content height below is skipped for a maximized window — it
+ * would otherwise shrink the phone's full-screen About back to a 440px-era
+ * rect. The notices scroll inside the window as usual.
  */
 (function () {
     if (!window.sac) { console.warn("[sac.about] globals.js must load first — about unavailable."); return; }
@@ -113,6 +118,8 @@
             setTimeout(() => {
                 win.open();
                 win.bringToFront?.();
+                // Compact: open() just maximized it — leave that rect alone.
+                if (win.hasAttribute("maximized")) return;
                 // Fit the window to its content. sac-window has no intrinsic
                 // height (it defaults to 300px), which clipped a longer About
                 // mid-sentence. Measure the now-laid-out body, add the window

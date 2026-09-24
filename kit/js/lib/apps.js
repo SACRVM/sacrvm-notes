@@ -147,8 +147,10 @@
  *                                  // changes from outside — a rail link, the back
  *                                  // button, a pasted URL. Returns an unsubscribe.
  *       host: {                    // views only, null standalone: what the HOST
- *           name, icon, href,      // injects into the app's own chrome. The
- *           nav, toolbar           // app assigns it to its own <sac-nav>
+ *           name, icon, href,      // injects into the app's own chrome. PLAIN
+ *           nav:     [{label, href, icon?}],       // DATA, never DOM nodes —
+ *           toolbar: [{icon, label?, title?,       // the app's OWN <sac-nav>
+ *                      href? | onClick?}],         // renders every bit of it
  *       },                         // (nav.host = context.host): ⌂ jump, suite
  *                                  // nav in the burger, controls in the ribbon.
  *                                  // A host may re-declare (init({host}) again):

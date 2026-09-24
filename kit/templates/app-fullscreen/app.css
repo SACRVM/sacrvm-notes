@@ -15,8 +15,10 @@ app-my-fullscreen-app .main-layout { height: 100%; }
 app-my-fullscreen-app .page {
     max-width: 1100px;
     margin: 0 auto;
-    /* No nav clearance: .main-layout clears the app's own fixed nav. */
-    padding: 4rem 2rem 3rem;
+    /* No nav clearance: .main-layout clears the app's own fixed nav.
+       clamp() instead of a media query: roomy on a monitor, tight on a
+       phone (the rail is a drawer there, so the page gets the full width). */
+    padding: clamp(2rem, 8vw, 4rem) clamp(1rem, 5vw, 2rem) 3rem;
 }
 
 app-my-fullscreen-app .lead {

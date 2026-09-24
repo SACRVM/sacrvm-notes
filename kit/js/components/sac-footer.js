@@ -10,6 +10,11 @@
  *   version    — optional version string, rendered as " · v<version>".
  *   link-href  — optional external link.
  *   link-label — text for the link (default "LINK").
+ *
+ * Compact/touch: usually the last thing on the page, so the bottom padding
+ * adds env(safe-area-inset-bottom) — the home indicator never sits on the
+ * text (0 on desktop, where nothing changes). The line wraps at 360px. Under
+ * (pointer: coarse) the link gets a 44px-tall invisible hit halo.
  */
 (function () {
 
@@ -47,6 +52,8 @@ class SacFooter extends HTMLElement {
                     text-transform: uppercase;
                     border-top: 1px solid var(--border);
                     margin-top: 4rem;
+                    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+                    overflow-wrap: anywhere;
                 }
                 a {
                     color: inherit;
@@ -54,6 +61,21 @@ class SacFooter extends HTMLElement {
                     margin-left: 0.5rem;
                 }
                 a:hover { color: var(--accent); }
+                @media (pointer: coarse) {
+                    a { position: relative; }
+                    a::after {
+                        content: "";
+                        position: absolute;
+                        left: -0.5rem;
+                        right: -0.5rem;
+                        top: 50%;
+                        height: 44px;
+                        translate: 0 -50%;
+                    }
+                }
+                @media (hover: none) {
+                    a:hover { color: inherit; }
+                }
                 .version { opacity: 0.7; }
             </style>
             <span>${brand}</span>

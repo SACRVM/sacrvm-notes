@@ -17,6 +17,10 @@
  * Properties:
  *   checked  — get/set, reflects the attribute.
  *   disabled — get/set, reflects the attribute.
+ *
+ * Compact/touch: the whole row (label + switch) is the tap target; under
+ * (pointer: coarse) the row is at least 44px tall. The switch itself keeps
+ * its size. Nothing is hover-only.
  */
 class SacToggle extends HTMLElement {
     static get observedAttributes() { return ["label", "checked", "disabled"]; }
@@ -113,6 +117,12 @@ class SacToggle extends HTMLElement {
                 }
                 :host([checked]) .switch { background: var(--accent); }
                 :host([checked]) .knob   { transform: translateX(14px); background: var(--on-accent); }
+                /* Touch: the whole row is the target (label included), so a
+                   44px-tall row is the hit area — the 28px switch keeps its
+                   look. */
+                @media (pointer: coarse) {
+                    :host { min-height: 44px; box-sizing: border-box; }
+                }
                 @media (prefers-reduced-motion: reduce) {
                     .switch, .knob { transition: none; }
                 }

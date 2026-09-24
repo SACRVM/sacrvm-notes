@@ -43,6 +43,14 @@
  *             stays between the nav ribbon and the bottom edge.
  *
  * Double-clicking the title bar toggles maximize / restore.
+ *
+ * Compact (ui.css §15 — ≤768px, or a phone held sideways): drag-and-resize is a desktop metaphor, so a
+ * window is ALWAYS maximized there — an open window maximizes itself, the
+ * maximize dot is hidden (there is nothing to restore to), dragging is off,
+ * and minimize collapses it to its title bar at the top. The component sets
+ * the `compact` attribute meanwhile (styling hook). Back on a wide screen, a
+ * window the phone maximized returns to its normal rect; one the user had
+ * maximized stays maximized.
  */
 (function () {
 
@@ -71,6 +79,10 @@ class SacWindow extends HTMLElement {
         this._normalRect = null;      // inline geometry saved on leaving 'normal'
         this._syncingState = false;   // re-entrancy guard for the reflection
 
+        this._mq = window.matchMedia('(max-width: 768px), (max-height: 480px) and (pointer: coarse)');
+        this._autoMax = false;        // maximized by compact, not by the user
+        this._onCompactChange = () => this._syncCompact();
+
         this._onViewportResize = () => {
             if (this._windowState === 'maximized') this._applyMaximizedRect();
             else this._clampToViewport();
@@ -96,10 +108,13 @@ class SacWindow extends HTMLElement {
         this.applyAttributes();
         this._updateControls();
         window.addEventListener('resize', this._onViewportResize);
+        this._mq.addEventListener('change', this._onCompactChange);
+        this._syncCompact();
     }
 
     disconnectedCallback() {
         window.removeEventListener('resize', this._onViewportResize);
+        this._mq.removeEventListener('change', this._onCompactChange);
         // Drop any in-flight drag/resize listeners on document.
         if (this.onMouseUp) this.onMouseUp();
     }
@@ -122,6 +137,11 @@ class SacWindow extends HTMLElement {
         }
 
         if (this.shadowRoot.innerHTML === '') return;
+
+        if (name === 'open') {
+            if (newValue !== null) this._syncCompact();
+            return;
+        }
 
         // Geometry attributes are LIVE, not write-once: applyAttributes() only
         // FILLS an empty inline style (so it never fights a drag/resize), which
@@ -223,8 +243,23 @@ class SacWindow extends HTMLElement {
             }
 
             :host([maximized]) .title-bar,
-            :host([maximized]) .title-bar:active {
+            :host([maximized]) .title-bar:active,
+            :host([compact]) .title-bar,
+            :host([compact]) .title-bar:active {
                 cursor: default;
+            }
+
+            /* Compact: always maximized, so there is nothing to maximize. */
+            :host([compact]) .max-btn { display: none !important; }
+            /* Filling the phone screen, the see-through glass reads as
+               noise over the page behind — go opaque (the glass hue, unblurred). */
+            :host([compact]) .window-container {
+                background: var(--glass-hue);
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
+            }
+            :host([compact]) .content {
+                padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
             }
 
             .window-container {
@@ -316,17 +351,26 @@ class SacWindow extends HTMLElement {
                 color: color-mix(in srgb, var(--fg) 78%, var(--bg));
                 font-size: 0.9rem;
                 line-height: 1.6;
-                /* Scrollbar: the STANDARD properties, not ::-webkit-scrollbar.
-                   --scrollbar-thumb and scrollbar-color inherit through the
-                   shadow boundary from ui.css, but scrollbar-width does NOT
-                   inherit — so a shadow scroller computes width:auto and
-                   Chrome paints the native full-width bar (arrow buttons on
-                   Windows). Once scrollbar-color applies Chrome also ignores
-                   any ::-webkit-scrollbar theming, which is why the old webkit
-                   block here was silently inert. Setting scrollbar-width
-                   explicitly restores the thin themed bar. */
-                scrollbar-width: thin;
-                scrollbar-color: var(--scrollbar-thumb) transparent;
+            }
+
+            /* Scrollbar — the kit recipe (ui.css §5), re-stated because
+               ::-webkit-scrollbar does not pierce a shadow root. Firefox, which has
+               no ::-webkit-scrollbar, gets the standard pair instead. */
+            .content::-webkit-scrollbar { width: 10px; height: 10px; }
+            .content::-webkit-scrollbar-track { background: transparent; }
+            .content::-webkit-scrollbar-thumb {
+                background: var(--scrollbar-thumb);
+                background-clip: content-box;
+                border: 2px solid transparent;
+                border-radius: 999px;
+            }
+            .content::-webkit-scrollbar-thumb:hover {
+                background: var(--scrollbar-thumb-hover);
+                background-clip: content-box;
+            }
+            .content::-webkit-scrollbar-corner { background: transparent; }
+            @supports not selector(::-webkit-scrollbar) {
+                .content { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
             }
 
             .resize-handle {
@@ -347,6 +391,17 @@ class SacWindow extends HTMLElement {
                 height: 8px;
                 border-right: 2px solid color-mix(in srgb, var(--fg) 30%, transparent);
                 border-bottom: 2px solid color-mix(in srgb, var(--fg) 30%, transparent);
+            }
+
+            /* A 44px hit area per dot on touch: 20px dots, 24px apart, each
+               with an invisible halo — the halos meet, never overlap. */
+            @media (pointer: coarse) {
+                .controls { gap: 24px; }
+                .ctrl-btn { width: 20px; height: 20px; }
+                .ctrl-btn::after { content: ''; position: absolute; inset: -12px; }
+            }
+            @media (hover: none) {
+                .ctrl-btn:hover { transform: none; background: var(--btn-color); }
             }
 
             @media (prefers-reduced-motion: reduce) {
@@ -430,7 +485,7 @@ class SacWindow extends HTMLElement {
         // DRAG — works while minimized, never while maximized.
         titleBar.addEventListener('mousedown', (e) => {
             if (e.target.closest('button')) return;
-            if (this._windowState === 'maximized') return;
+            if (this._windowState === 'maximized' || this.hasAttribute('compact')) return;
             this.isDragging = true;
             this.startX = e.clientX;
             this.startY = e.clientY;
@@ -491,6 +546,9 @@ class SacWindow extends HTMLElement {
        --------------------------------------------------------------------- */
 
     _setState(next) {
+        // Compact has no normal rect: "restore" means back to maximized.
+        if (next === 'normal' && this._mq.matches) next = 'maximized';
+        if (next === 'normal') this._autoMax = false;
         const current = this._windowState;
         if (next === current) return;
 
@@ -513,6 +571,8 @@ class SacWindow extends HTMLElement {
         }
 
         if (next === 'minimized') {
+            // Compact: collapse in place at the top, full width.
+            if (this._mq.matches) this._applyMaximizedRect();
             // Inline height wins over any :host rule, so the collapse is a
             // style swap; width, top and left stay as they were.
             this.style.height = 'auto';
@@ -564,9 +624,30 @@ class SacWindow extends HTMLElement {
         this.applyAttributes();
     }
 
+    /** Compact on/off: maximize on the phone, give the rect back after. */
+    _syncCompact() {
+        const compact = this._mq.matches;
+        this.toggleAttribute('compact', compact);
+        if (!this.shadowRoot.firstChild) return;
+        if (compact && this._windowState === 'normal' && this.hasAttribute('open')) {
+            this._setState('maximized');
+            this._autoMax = true;
+        } else if (!compact && this._autoMax) {
+            this._autoMax = false;
+            if (this._windowState === 'maximized') this._setState('normal');
+        }
+    }
+
+    /** Bottom of the fixed nav ribbon — 50px, or more under a notch. */
+    _navBottom() {
+        const nav = document.querySelector('sac-nav');
+        const bottom = nav ? Math.round(nav.getBoundingClientRect().bottom) : 0;
+        return Math.max(SacWindow.NAV_HEIGHT, bottom);
+    }
+
     _applyMaximizedRect() {
         const inset = SacWindow.MAX_INSET;
-        const nav = SacWindow.NAV_HEIGHT;
+        const nav = this._navBottom();
         // clientWidth/clientHeight, not vw/vh units: they exclude the
         // scrollbars, so the inset stays an inset.
         const vw = document.documentElement.clientWidth;
@@ -591,7 +672,7 @@ class SacWindow extends HTMLElement {
         const rect = this.getBoundingClientRect();
         if (!rect.width && !rect.height) return;
 
-        const nav = SacWindow.NAV_HEIGHT;
+        const nav = this._navBottom();
         const vw = document.documentElement.clientWidth;
         const vh = document.documentElement.clientHeight;
         const titleBar = this.shadowRoot.querySelector('.title-bar');

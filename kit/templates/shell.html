@@ -2,7 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- viewport-fit=cover: the page runs under a phone's notch and home bar;
+         the kit pads its nav, layouts and scroll regions by the safe-area
+         insets, so nothing important ends up behind them. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- Browser chrome colour (a phone's status bar / tab strip). These two
+         values mirror the --bg seeds in kit/css/ui.css (dark / light) — the
+         one place a seed is repeated, because a meta tag cannot read a custom
+         property. A custom theme updates them together with its seeds. -->
+    <meta name="theme-color" content="#0b0f1a" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)">
     <title>My Suite</title>
     <!-- Adjust the path to wherever kit/ lives relative to this page. -->
     <link rel="stylesheet" href="../kit/css/ui.css">
@@ -20,36 +29,40 @@
         <!-- Shown at "#/", hidden while a view app is on stage. Its nav is
              the HOME'S chrome, so it lives and dies with it. -->
         <div id="app-home" class="app-home">
+            <!-- On a phone: the ribbon shows the name as text, the context
+                 slot stays, the burger panel lists the suite; opening it
+                 brings back the icons — the desktop brand row. -->
             <sac-nav brand="MY SUITE" brand-icon="cube" brand-href="#/">
                 <div slot="context"><sac-theme-toggle></sac-theme-toggle></div>
             </sac-nav>
 
             <div class="orb"></div>
             <div class="hub-container">
-                        <header>
-                            <h1>MY SUITE</h1>
-                            <p class="intro-text">One line about the suite.</p>
-                        </header>
-                        <main class="grid">
-                            <!-- A view app is addressed by hash, so a plain link
-                                 opens it — no click handler in the way. -->
-                            <a class="tile" href="#/notes">
-                                <sac-icon name="note"></sac-icon>
-                                <div>
-                                    <h2>Notes</h2>
-                                    <p>What it does, in one sentence.</p>
-                                </div>
-                            </a>
-                            <!-- A window app opens in place; [data-app] binds it. -->
-                            <a class="tile" href="?app=timer" data-app="timer">
-                                <sac-icon name="clock"></sac-icon>
-                                <div>
-                                    <h2>Timer</h2>
-                                    <p>Small tool, lives in a floating window.</p>
-                                </div>
-                            </a>
-                        </main>
-                    </div>
+                <header>
+                    <h1>MY SUITE</h1>
+                    <p class="intro-text">One line about the suite.</p>
+                </header>
+                <main class="grid">
+                    <!-- A view app is addressed by hash, so a plain link
+                         opens it — no click handler in the way. -->
+                    <a class="tile" href="#/notes">
+                        <sac-icon name="note"></sac-icon>
+                        <div>
+                            <h2>Notes</h2>
+                            <p>What it does, in one sentence.</p>
+                        </div>
+                    </a>
+                    <!-- A window app opens in place; [data-app] binds it.
+                         On a phone its window opens maximized. -->
+                    <a class="tile" href="?app=timer" data-app="timer">
+                        <sac-icon name="clock"></sac-icon>
+                        <div>
+                            <h2>Timer</h2>
+                            <p>Small tool, lives in a floating window.</p>
+                        </div>
+                    </a>
+                </main>
+            </div>
             <sac-footer brand="MY SUITE" version="1.0.0"></sac-footer>
         </div>
         <!-- View apps are appended here by sac.apps. -->

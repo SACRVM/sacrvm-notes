@@ -23,7 +23,8 @@
  * the preferred side has no room.
  *
  * Show / hide:
- *   - pointerenter  → show after 400ms (cancelled by pointerleave)
+ *   - pointerenter  → show after 400ms (cancelled by pointerleave) — mouse
+ *                     and pen only; touch has its own path, below
  *   - focusin       → show immediately (keyboard users get no delay)
  *   - hide on pointerleave, focusout, Escape, window scroll (capture), resize
  *   Scroll/resize HIDE rather than reposition — cheap and never leaves a
@@ -36,6 +37,22 @@
  *   distance  — px gap between trigger and bubble (default 8).
  *   open      — presence forces the bubble visible (docs, demos, debugging).
  *   disabled  — presence means it never shows.
+ *
+ * Compact/touch:
+ *   There is no hover on a touch screen, so a touch press gets its own path:
+ *   LONG-PRESS the trigger (~500ms, finger held still) to show the bubble;
+ *   the next tap anywhere hides it. A normal tap is untouched — it never
+ *   shows the bubble (not even through the focus a tap gives a button) and
+ *   its click goes through. Only the click that ends a long-press that DID
+ *   show the bubble is swallowed, and while a press is held the native
+ *   context menu and the text-selection callout are suppressed. Moving the
+ *   finger (a scroll) cancels the press. The bubble is never wider than
+ *   the viewport minus 8px a side (min(280px, 100vw - 16px)).
+ *
+ *   A tooltip must NEVER be the only way to reach information: a long-press
+ *   is undiscoverable, and keyboard and screen-reader users may not get the
+ *   bubble either (see Accessibility). Put anything essential in the page —
+ *   a label, a caption, help text — and treat the tooltip as a shortcut.
  *
  * Accessibility:
  *   ARIA references cannot cross a shadow boundary — a light-DOM trigger
@@ -65,6 +82,18 @@ class SacTooltip extends HTMLElement {
         this._onKeyDown = this._onKeyDown.bind(this);
         this._onDismiss = this._onDismiss.bind(this);
         this._onReanchor = this._onReanchor.bind(this);
+        // Touch long-press (see "Compact/touch" in the header).
+        this._press = null;          // { id, x, y, timer } while a touch press is held
+        this._lastTouch = -Infinity; // time of the last touch pointerdown on the anchor
+        this._swallowClick = false;  // the click ending a long-press that showed the bubble
+        this._touchShown = false;    // shown by long-press → the next tap anywhere hides it
+        this._onPointerDown = this._onPointerDown.bind(this);
+        this._onPressMove = this._onPressMove.bind(this);
+        this._onPressEnd = this._onPressEnd.bind(this);
+        this._onAnchorClick = this._onAnchorClick.bind(this);
+        this._onContextMenu = this._onContextMenu.bind(this);
+        this._onSelectStart = this._onSelectStart.bind(this);
+        this._onDocTap = this._onDocTap.bind(this);
     }
 
     connectedCallback() {
@@ -75,6 +104,7 @@ class SacTooltip extends HTMLElement {
 
     disconnectedCallback() {
         this._unbindAnchor();
+        this._cancelPress();
         this._teardownGlobals();
         this._teardownPinned();
         this._clearTimer();
@@ -93,6 +123,10 @@ class SacTooltip extends HTMLElement {
         a.addEventListener("pointerleave", this._onPointerLeave);
         a.addEventListener("focusin", this._onFocusIn);
         a.addEventListener("focusout", this._onFocusOut);
+        a.addEventListener("pointerdown", this._onPointerDown);
+        a.addEventListener("click", this._onAnchorClick, true);
+        a.addEventListener("contextmenu", this._onContextMenu);
+        a.addEventListener("selectstart", this._onSelectStart);
     }
 
     _unbindAnchor() {
@@ -101,6 +135,10 @@ class SacTooltip extends HTMLElement {
         a.removeEventListener("pointerleave", this._onPointerLeave);
         a.removeEventListener("focusin", this._onFocusIn);
         a.removeEventListener("focusout", this._onFocusOut);
+        a.removeEventListener("pointerdown", this._onPointerDown);
+        a.removeEventListener("click", this._onAnchorClick, true);
+        a.removeEventListener("contextmenu", this._onContextMenu);
+        a.removeEventListener("selectstart", this._onSelectStart);
     }
 
     /** Attach mode: anchor the bubble to an EXTERNAL element instead of
@@ -111,6 +149,7 @@ class SacTooltip extends HTMLElement {
     attachTo(el) {
         if (!el || el === this._anchorEl) return this;
         if (this.isConnected) this._unbindAnchor();
+        this._cancelPress();
         this._anchorEl = el;
         this.toggleAttribute("data-attached", el !== this);
         if (this.isConnected) this._bindAnchor();
@@ -139,6 +178,7 @@ class SacTooltip extends HTMLElement {
     hide() {
         this._clearTimer();
         this._visible = false;
+        this._touchShown = false;
         this._teardownGlobals();
         this._sync();
     }
@@ -151,15 +191,27 @@ class SacTooltip extends HTMLElement {
         if (this._timer) { clearTimeout(this._timer); this._timer = null; }
     }
 
-    _onPointerEnter() {
+    _onPointerEnter(e) {
+        // A touch "enters" on pointerdown and "leaves" on lift — that is a
+        // tap, not a hover. Touch goes through the long-press path instead.
+        if (e.pointerType === "touch") return;
         if (this.hasAttribute("disabled") || !this._text()) return;
         this._clearTimer();
         this._timer = setTimeout(() => { this._timer = null; this.show(); }, 400);
     }
 
-    _onPointerLeave() { this.hide(); }
+    _onPointerLeave(e) {
+        if (e.pointerType === "touch") return;
+        this.hide();
+    }
 
-    _onFocusIn() { this.show(); }
+    _onFocusIn() {
+        // A tap focuses the button it lands on (after the pointer events, via
+        // the compat mousedown) — that focus is the tap, not a keyboard user
+        // arriving, and must not pop the bubble on every tap.
+        if (performance.now() - this._lastTouch < 1000) return;
+        this.show();
+    }
 
     _onFocusOut() { this.hide(); }
 
@@ -168,6 +220,81 @@ class SacTooltip extends HTMLElement {
     }
 
     _onDismiss() { this.hide(); }
+
+    /* ------------------------------------------------------ touch long-press */
+
+    _onPointerDown(e) {
+        if (e.pointerType !== "touch") return;
+        this._lastTouch = performance.now();
+        this._swallowClick = false;
+        this._cancelPress();
+        if (this.hasAttribute("disabled") || !this._text()) return;
+        const press = { id: e.pointerId, x: e.clientX, y: e.clientY, timer: null };
+        press.timer = setTimeout(() => {
+            press.timer = null;
+            if (this._press !== press) return;
+            this.show();
+            this._touchShown = true;
+            this._swallowClick = true;           // the lift must not also activate the trigger
+            // Registered 500ms after the pointerdown that started this press,
+            // so only a NEW tap reaches _onDocTap.
+            document.addEventListener("pointerdown", this._onDocTap, true);
+        }, 500);
+        this._press = press;
+        window.addEventListener("pointermove", this._onPressMove, true);
+        window.addEventListener("pointerup", this._onPressEnd, true);
+        window.addEventListener("pointercancel", this._onPressEnd, true);
+    }
+
+    /** A finger that travels is scrolling or dragging, not pressing. */
+    _onPressMove(e) {
+        const p = this._press;
+        if (!p || e.pointerId !== p.id) return;
+        if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 10) this._cancelPress();
+    }
+
+    _onPressEnd(e) {
+        const p = this._press;
+        if (!p || e.pointerId !== p.id) return;
+        this._cancelPress();
+        // The click (if any) follows the pointerup straight away; one that
+        // never comes must not eat a later, unrelated tap.
+        if (this._swallowClick) setTimeout(() => { this._swallowClick = false; }, 400);
+    }
+
+    _cancelPress() {
+        const p = this._press;
+        if (!p) return;
+        if (p.timer != null) clearTimeout(p.timer);
+        this._press = null;
+        window.removeEventListener("pointermove", this._onPressMove, true);
+        window.removeEventListener("pointerup", this._onPressEnd, true);
+        window.removeEventListener("pointercancel", this._onPressEnd, true);
+    }
+
+    /** Capture phase on the anchor: runs before the trigger's own handlers. */
+    _onAnchorClick(e) {
+        if (!this._swallowClick) return;
+        this._swallowClick = false;
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    /** A held touch press would open the native context menu / callout. */
+    _onContextMenu(e) {
+        if (this._press || this._touchShown) e.preventDefault();
+    }
+
+    _onSelectStart(e) {
+        if (this._press || this._touchShown) e.preventDefault();
+    }
+
+    /** The next tap anywhere after a long-press hides the bubble. */
+    _onDocTap() {
+        document.removeEventListener("pointerdown", this._onDocTap, true);
+        this._swallowClick = false;
+        if (this._touchShown) this.hide();
+    }
 
     /** [open] can't be dismissed by scrolling — it re-anchors instead. */
     _onReanchor() { if (this._isShown()) this._position(); }
@@ -195,6 +322,7 @@ class SacTooltip extends HTMLElement {
     }
 
     _teardownGlobals() {
+        document.removeEventListener("pointerdown", this._onDocTap, true);
         if (!this._globals) return;
         this._globals = false;
         document.removeEventListener("keydown", this._onKeyDown);
@@ -208,6 +336,13 @@ class SacTooltip extends HTMLElement {
                 :host {
                     display: inline-block;
                     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                }
+                /* iOS: a held press on the trigger would raise the link /
+                   selection callout over the bubble (contextmenu and
+                   selectstart are handled in JS; this is the part JS cannot
+                   reach). Attach mode leaves the external element alone. */
+                @media (hover: none) {
+                    :host(:not([data-attached])) { -webkit-touch-callout: none; }
                 }
 
                 /* Attach mode: the host wraps nothing — take it out of flow
@@ -224,13 +359,15 @@ class SacTooltip extends HTMLElement {
                     position: fixed;
                     inset: auto;                   /* the UA pins popovers to all four sides… */
                     margin: 0;                     /* …and centres them with auto margins */
-                    /* Explicit, so it beats the UA's
-                       [popover]:not(:popover-open) { display: none }: the bubble
-                       must stay laid out while hidden (see _position). */
+                    /* Laid out while in the top layer, shown or fading (see
+                       _position, which measures it still hidden); out of
+                       layout once it leaves — see :not(:popover-open) below. */
                     display: block;
                     z-index: 25000;
                     box-sizing: border-box;
-                    max-width: 280px;
+                    /* Never wider than the viewport minus the 8px clamp margin
+                       a side. */
+                    max-width: min(280px, 100vw - 16px);
                     width: max-content;
                     padding: 5px 10px;
                     border: 1px solid var(--border-strong);
@@ -260,6 +397,13 @@ class SacTooltip extends HTMLElement {
                     visibility: visible;
                     transform: translate(0, 0);
                 }
+
+                /* Out of the top layer = out of layout: a hidden bubble parked
+                   at its static position must not widen a phone page (under
+                   a transformed ancestor it would count as overflow). _raise
+                   runs before _position, so it is always laid out when
+                   measured. Browsers without popover drop this rule. */
+                .bubble:not(:popover-open) { display: none; }
 
                 /* Pinned bubble whose anchor is entirely outside the viewport:
                    the position clamp would otherwise park it over unrelated

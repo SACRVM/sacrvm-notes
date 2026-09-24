@@ -48,6 +48,14 @@
  * CSS custom properties:
  *   --picker-width — set on this field, forwarded to the popover's
  *                    <sac-color-picker>. Default 240px.
+ *
+ * Compact/touch:
+ *   The popover is never wider than the viewport minus 8px a side
+ *   (max-width: calc(100vw - 16px)); the picker inside caps itself at the
+ *   popover's width, so the 8px viewport clamp holds on a 360px phone. Under
+ *   (pointer: coarse) the well is 44 x 44px and the hex input 44px tall with
+ *   16px type (no iOS focus zoom); the picker brings its own 44px targets.
+ *   Nothing is hover-only — hover only tints borders.
  */
 (function () {
 
@@ -268,6 +276,7 @@ class SacColorField extends HTMLElement {
                 :host {
                     --picker-width: 240px;   /* mirrors the picker's own default */
                     display: inline-block;
+                    max-width: 100%;
                     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
                     color: var(--text);
                 }
@@ -379,6 +388,10 @@ class SacColorField extends HTMLElement {
                     margin: 0;                     /* …and centres them with auto margins */
                     display: block;                /* beats the UA's popover display: none */
                     z-index: 9999;
+                    box-sizing: border-box;
+                    /* Never wider than the viewport minus the 8px clamp margin
+                       a side; the picker inside caps itself at 100%. */
+                    max-width: calc(100vw - 16px);
                     padding: 10px;
                     background: var(--glass-strong);
                     backdrop-filter: blur(12px);
@@ -398,6 +411,28 @@ class SacColorField extends HTMLElement {
                     opacity: 1;
                     visibility: visible;
                     transform: translateY(0);
+                }
+                /* Out of the top layer = out of layout (as sac-menu): a closed
+                   popover parked at its last anchor must not widen a phone
+                   page. It leaves the layer only after the close fade. */
+                .popover:not(:popover-open) { display: none; }
+                /* Back from display: none there is no "before" style for the
+                   open transition to start from — supply the closed look. */
+                @starting-style {
+                    .popover.open {
+                        opacity: 0;
+                        transform: translateY(-4px);
+                    }
+                }
+
+                /* Touch: a 44px row — a 44 x 44 well beside a 44px field with
+                   16px type (below 16px iOS zooms the page on focus). */
+                @media (pointer: coarse) {
+                    .well { width: 44px; height: 44px; }
+                    .hex {
+                        height: 44px;
+                        font-size: max(16px, 1rem);
+                    }
                 }
 
                 /* The picker's own :host default would beat a value inherited

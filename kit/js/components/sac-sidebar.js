@@ -15,8 +15,28 @@
  *     { section }   — a group heading on its own
  *
  * Attributes:
- *   width — rail width, default 220px. Also settable via the
- *           --sidebar-width custom property.
+ *   width  — rail width, default 220px. Also settable via the
+ *            --sidebar-width custom property.
+ *   drawer — set BY <sac-nav> when it adopts the rail (its burger opens it).
+ *            Only on compact (ui.css §15) does it change anything: the
+ *            rail leaves the flow and becomes an off-canvas drawer,
+ *            var(--drawer-width) wide. Without a nav, set it yourself and
+ *            drive the rail with the methods or the event below.
+ *   open   — reflected; the drawer is out. Ignored when the rail is inline
+ *            (desktop, or no [drawer]).
+ *
+ * Methods: open() / close() / toggle() — set or clear [open].
+ *
+ * Events:
+ *   sac:sidebar-toggle — LISTENED FOR on window: dispatch it (optionally with
+ *            detail { open: true|false }) to drive the rail from any button.
+ *            sac-nav's burger does not need it — it holds the rail directly.
+ *   sac:sidebar-open / sac:sidebar-close — fired by the rail (bubbles,
+ *            composed) whenever [open] changes.
+ *
+ * Compact behaviour: while the drawer is open, tapping an item closes it
+ * (the item navigated — the drawer did its job). Scrim, Escape, swipe-back
+ * and the focus trap belong to the <sac-nav> that adopted the rail.
  *
  * Layout contract: the rail is a normal flex child — put it inside
  * .main-layout (which already clears the fixed <sac-nav>), beside your
@@ -30,22 +50,45 @@
         (window.sac && window.sac.t) ? window.sac.t(key, fallback) : fallback;
 
 class SacSidebar extends HTMLElement {
-    static get observedAttributes() { return ["width"]; }
+    static get observedAttributes() { return ["width", "open"]; }
 
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
         this._items = [];
+        this._onToggleEvent = (e) => {
+            const want = e.detail && typeof e.detail.open === "boolean" ? e.detail.open : null;
+            this.toggle(want);
+        };
     }
 
     connectedCallback() {
         if (!this.shadowRoot.firstChild) this._render();
         this._syncWidth();
         this.renderSidebar();
+        window.addEventListener("sac:sidebar-toggle", this._onToggleEvent);
     }
 
-    attributeChangedCallback() {
+    disconnectedCallback() {
+        window.removeEventListener("sac:sidebar-toggle", this._onToggleEvent);
+    }
+
+    attributeChangedCallback(name, oldValue, newValue) {
+        if (name === "open") {
+            if ((oldValue === null) === (newValue === null)) return;
+            this.dispatchEvent(new CustomEvent(newValue !== null ? "sac:sidebar-open" : "sac:sidebar-close",
+                { bubbles: true, composed: true }));
+            return;
+        }
         if (this.shadowRoot.firstChild) this._syncWidth();
+    }
+
+    open()   { this.setAttribute("open", ""); }
+    close()  { this.removeAttribute("open"); }
+    /** Flip the drawer; pass a boolean to force a side. */
+    toggle(force) {
+        const next = typeof force === "boolean" ? force : !this.hasAttribute("open");
+        this.toggleAttribute("open", next);
     }
 
     get items() { return this._items; }
@@ -91,6 +134,8 @@ class SacSidebar extends HTMLElement {
                 el.type = "button";
                 if (item.onClick) el.addEventListener("click", (e) => item.onClick(e));
             }
+            // An item tap inside the open drawer is the drawer's job done.
+            el.addEventListener("click", () => { if (this.hasAttribute("open")) this.close(); });
             if (item.disabled) {
                 el.setAttribute("aria-disabled", "true");
                 if (el.tagName === "BUTTON") el.disabled = true;
@@ -126,6 +171,33 @@ class SacSidebar extends HTMLElement {
                     z-index: 90;
                 }
                 :host([hidden]) { display: none; }
+
+                /* Compact: off-canvas drawer (see the header). The same
+                   recipe as .sidebar[drawer] in ui.css — a light-DOM rule
+                   cannot reach a shadow host's own styles reliably, so it is
+                   written out twice. */
+                @media (max-width: 768px), (max-height: 480px) and (pointer: coarse) {
+                    :host([drawer]) {
+                        position: fixed;
+                        top: var(--drawer-top, calc(50px + env(safe-area-inset-top, 0px)));
+                        bottom: 0;
+                        left: 0;
+                        width: var(--drawer-width);
+                        z-index: 10000;
+                        padding-left: env(safe-area-inset-left, 0px);
+                        padding-bottom: env(safe-area-inset-bottom, 0px);
+                        translate: -105% 0;
+                        visibility: hidden;
+                        transition: translate 0.5s var(--ease-swift), visibility 0.5s;
+                    }
+                    :host([drawer][open]) {
+                        translate: none;
+                        visibility: visible;
+                    }
+                }
+                @media (pointer: coarse) {
+                    .item { min-height: 44px; }
+                }
 
                 nav {
                     display: flex;
@@ -182,7 +254,7 @@ class SacSidebar extends HTMLElement {
                 .item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
                 @media (prefers-reduced-motion: reduce) {
-                    .item { transition: none; }
+                    .item, :host([drawer]) { transition: none; }
                 }
             </style>
             <nav id="list" aria-label="${String(t("sidebar.label", "Sections")).replace(/"/g, "&quot;")}"></nav>
