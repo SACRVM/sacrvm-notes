@@ -1,33 +1,36 @@
 {
+  // Firepit per-project config. JSONC: comments and trailing commas are allowed.
+  // Commands follow the Linux patterns of ../firepit-template/.firepit/config.json:
+  // a group per area, a short lowercase name, a one-line description.
+
   "version": 1,
   "id": "sacrvm-notes",
+
   "commands": [
     {
-      "name": "Serve",
-      "type": "Shell",
-      "icon": "\uD83D\uDE80",
-      "command": "cmd",
-      "args": [
-        "/c",
-        "npx",
-        "serve",
-        ".",
-        "-l",
-        "3320"
-      ],
-      "window": "reuse:serve",
+      "group": "Run",
+      "name": "site",
+      "description": "Serves the app's standalone harness on port 3320 (also reachable from a phone on the LAN).",
+      "type": "shell",
+      "command": "python3",
+      "args": ["-m", "http.server", "3320"],
+      "window": "reuse:site",
       "longRunning": true
     },
+
     {
-      "name": "Open",
-      "type": "Url",
-      "icon": "\uD83D\uDCDD",
+      "group": "Open",
+      "name": "app",
+      "description": "The Notes app on the local server.",
+      "type": "url",
       "url": "http://localhost:3320/"
     },
+
     {
-      "name": "GitHub",
-      "type": "Url",
-      "icon": "\uD83D\uDC19",
+      "group": "Git",
+      "name": "repo",
+      "description": "The repository on GitHub.",
+      "type": "url",
       "url": "https://github.com/SACRVM/sacrvm-notes"
     }
   ]

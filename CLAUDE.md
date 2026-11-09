@@ -13,8 +13,9 @@ reads), `app.js` (one custom element, one classic script, guarded define),
 `app.css`, `index.html` as a standalone harness, and `kit/` — the vendored
 kit. Nothing else ships.
 
-**No build step, ever.** Vanilla custom elements, plain CSS, `npx serve .` and
-F5 — no node_modules, no bundler, no TypeScript.
+**No build step, ever.** Vanilla custom elements, plain CSS,
+`python3 -m http.server 3320` (the Firepit command *Run site*) and F5 — no
+node_modules, no bundler, no TypeScript.
 
 **The kit is vendored** (autark, decided 2026-08-22): `kit/` is the release
 copy, dropped in verbatim — `kit/VERSION` says which — and never edited here;

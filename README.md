@@ -20,7 +20,7 @@ first written line, then to "Untitled".
 ## Run it
 
 ```bash
-npx serve .        # http://localhost:3000
+python3 -m http.server 3320        # http://localhost:3320
 ```
 
 `index.html` is the harness: it loads the vendored kit (`kit/`, the release
